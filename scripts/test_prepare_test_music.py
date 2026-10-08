@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -100,6 +101,23 @@ class MusicArchiveTest(unittest.TestCase):
                     [], 0, json.dumps({"value": "variable-url"}))), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual("variable-url", music.archive_url())
             self.assertEqual("", output.getvalue())
+
+    def test_android_apk_utf8_paths_without_zip_language_flag_are_read_correctly(self):
+        # Zipflinger pode gravar nomes UTF-8 sem o bit de idioma; o padrão CP437 perde acentos.
+        name = "assets/music/MPB/canção.mp3"
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr(name, b"fixture")
+        data = bytearray(output.getvalue())
+        for signature, offset in [(b"PK\x03\x04", 6), (b"PK\x01\x02", 8)]:
+            position = data.index(signature) + offset
+            flags = struct.unpack_from("<H", data, position)[0]
+            struct.pack_into("<H", data, position, flags & ~0x800)
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            self.assertNotEqual([name], archive.namelist())
+        with zipfile.ZipFile(io.BytesIO(data), metadata_encoding="utf-8") as archive:
+            self.assertEqual([name], archive.namelist())
+            self.assertGreater(archive.getinfo(name).file_size, 0)
 
     def test_invalid_configuration_returns_sanitized_error_without_traceback(self):
         with patch.dict(os.environ, {"MUSIC_ARCHIVE_URL": "not-a-url", "MUSIC_ARCHIVE_VARIABLE_PRESENT": "false"}), \

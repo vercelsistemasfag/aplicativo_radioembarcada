@@ -97,8 +97,11 @@ jobs:
                       pathlib.Path('app/src/main/assets/music').rglob('*')
                       if path.is_file() and path.suffix.lower() == '.mp3'}
           apk_path = pathlib.Path('app/build/outputs/apk/debug/app-debug.apk')
-          with zipfile.ZipFile(apk_path) as apk:
+          with zipfile.ZipFile(apk_path, metadata_encoding='utf-8') as apk:
               included = {name for name in apk.namelist() if name.startswith('assets/music/') and name.lower().endswith('.mp3')}
+              print(f'Comparação dos assets: {len(expected)} MP3 esperados; {len(included)} MP3 no APK.')
+              if included != expected:
+                  print('Caminhos divergentes (amostra):', sorted(expected - included)[:3], sorted(included - expected)[:3])
               assert expected and included == expected, 'Biblioteca musical ausente ou incompleta no APK'
               assert all(apk.getinfo(name).file_size > 0 for name in included), 'MP3 vazio no APK'
               music_count = len(included)

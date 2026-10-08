@@ -174,7 +174,7 @@ Mantidas Kotlin/Compose Compiler 2.1.20, Compose BOM 2025.04.01/Material 3, Acti
 
 O workflow é a fonte oficial dos resultados: consulte os passos e o resumo da execução no Actions. O resumo informa quantidade de testes Android, erros/avisos de lint e MP3 realmente presentes no APK. Os testes não dependem da biblioteca privada de 77 músicas.
 
-A suíte atual contém **48 testes JVM por variante** (provider/recursão/subpastas/metadados/fallback/biblioteca vazia, fila/repetição/ProgramItem, conversão Jamendo, estados, buffer e política de erros) e **8 testes Python** do preparador (biblioteca opcional, ZIP, RAR4/RAR5 com mocks, caminhos inválidos, credencial sanitizada e preservação local). Para repetir a validação:
+A suíte atual contém **48 testes JVM por variante** (provider/recursão/subpastas/metadados/fallback/biblioteca vazia, fila/repetição/ProgramItem, conversão Jamendo, estados, buffer e política de erros) e **9 testes Python** do preparador (biblioteca opcional, ZIP, RAR4/RAR5 com mocks, caminhos inválidos, credencial sanitizada e preservação local). Para repetir a validação:
 
 ```sh
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
