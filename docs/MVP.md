@@ -2,7 +2,7 @@
 
 ## Atualização autorizada — etapa 2
 
-Para o ambiente de desenvolvimento, a fonte ativa agora é `LocalAssetMusicProvider`, que localiza MP3 recursivamente em `assets/music` (inclusive `music/MPB/`). A biblioteca é exclusivamente local, não versionada, e a programação funciona sem rede. Jamendo permanece disponível para integração futura. A separação MusicProvider → Programming → Player e MediaSession/MediaLibraryService permanece a mesma.
+Para o ambiente de desenvolvimento, a fonte ativa agora é `LocalAssetMusicProvider`, que localiza MP3 recursivamente em `assets/music` (inclusive `music/MPB/`). A biblioteca é exclusivamente local, não versionada, e a programação funciona sem rede. Jamendo permanece disponível para integração futura, inativo em debug e release nesta fase. A biblioteca completa percorre ciclos aleatórios sem repetição antes de esgotar o ciclo, com buffer/preload próprios para assets. O workflow existente pode preparar a biblioteca privada durante o build usando MUSIC_ARCHIVE_URL; o aplicativo instalado continua totalmente offline. A separação MusicProvider → Programming → Player e MediaSession/MediaLibraryService permanece a mesma.
 
 Para o teste privado/não comercial da etapa 2, a programação é montada localmente a partir de faixas individuais da API de tracks da Jamendo, sem emissora ou endpoint de rádio contínua. Essa instrução substitui, apenas nesta etapa, as referências abaixo ao stream final/programação exclusiva no servidor. O app mantém uma única estação sem gerenciamento de playlists pelo motorista.
 

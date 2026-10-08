@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
                             liveRegion = LiveRegionMode.Polite
                         }, style = MaterialTheme.typography.titleMedium)
                         current?.let { track ->
-                            track.artworkUrl?.let { artwork ->
+                            (track.artworkData ?: track.artworkUrl)?.let { artwork ->
                                 AsyncImage(model = artwork, contentDescription = "Capa de ${track.title}",
                                     modifier = Modifier.size(160.dp))
                             }

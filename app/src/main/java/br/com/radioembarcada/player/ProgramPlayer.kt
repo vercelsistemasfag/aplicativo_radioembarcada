@@ -15,6 +15,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
@@ -24,7 +25,7 @@ import br.com.radioembarcada.model.ProgramItemType
 
 /** Toca conteúdo genérico. Não consulta catálogo nem decide a ordem musical. */
 @UnstableApi
-class ProgramPlayer(context: Context) {
+class ProgramPlayer(context: Context, private val localSource: Boolean = false) {
     private data class Entry(val program: ProgramItem, val media: MediaItem)
     private val entries = mutableListOf<Entry>()
     private var baseRanking = 0
@@ -69,21 +70,25 @@ class ProgramPlayer(context: Context) {
         val control = TargetPreloadStatusControl<Int> { ranking ->
             if (!preloadEnabled) null else when (ranking - currentRanking) {
                 1 -> DefaultPreloadManager.Status(DefaultPreloadManager.Status.STAGE_LOADED_FOR_DURATION_MS,
-                    PlaybackConfiguration.NEXT_TRACK_PRELOAD_MS)
+                    if (localSource) PlaybackConfiguration.LOCAL_NEXT_TRACK_PRELOAD_MS else PlaybackConfiguration.NEXT_TRACK_PRELOAD_MS)
                 2 -> DefaultPreloadManager.Status(DefaultPreloadManager.Status.STAGE_LOADED_FOR_DURATION_MS,
-                    PlaybackConfiguration.SECOND_TRACK_PRELOAD_MS)
+                    if (localSource) PlaybackConfiguration.LOCAL_SECOND_TRACK_PRELOAD_MS else PlaybackConfiguration.SECOND_TRACK_PRELOAD_MS)
                 else -> null
             }
         }
+        val loadControl = if (localSource) RadioLoadControl(DefaultLoadControl.Builder()
+            .setBufferDurationsMs(PlaybackConfiguration.LOCAL_MIN_BUFFER_MS, PlaybackConfiguration.LOCAL_MAX_BUFFER_MS,
+                PlaybackConfiguration.LOCAL_START_BUFFER_MS, PlaybackConfiguration.LOCAL_REBUFFER_MS)
+            .setPrioritizeTimeOverSizeThresholds(true).build(), localSource = true) else RadioLoadControl()
         val builder = DefaultPreloadManager.Builder(context, control)
-            .setMediaSourceFactory(managedFactory).setLoadControl(RadioLoadControl())
+            .setMediaSourceFactory(managedFactory).setLoadControl(loadControl)
         preload = builder.build()
         manager = preload
         player = builder.buildExoPlayer().apply {
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             setHandleAudioBecomingNoisy(true)
-            setWakeMode(C.WAKE_MODE_NETWORK)
+            setWakeMode(if (localSource) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
         }
     }
 
@@ -103,7 +108,7 @@ class ProgramPlayer(context: Context) {
     fun updatePreload(sourceAvailable: Boolean) {
         val ranking = baseRanking + player.currentMediaItemIndex.coerceAtLeast(0)
         val enabled = sourceAvailable && player.playWhenReady && player.isPlaying &&
-            player.totalBufferedDuration >= PlaybackConfiguration.MIN_BUFFER_MS
+            (localSource || player.totalBufferedDuration >= PlaybackConfiguration.MIN_BUFFER_MS)
         if (ranking != currentRanking || enabled != preloadEnabled) {
             currentRanking = ranking
             preloadEnabled = enabled
@@ -123,6 +128,13 @@ class ProgramPlayer(context: Context) {
         old.forEach { preload.remove(it.media) }
     }
 
+    fun clearEndedQueue() {
+        player.clearMediaItems()
+        entries.forEach { preload.remove(it.media) }
+        baseRanking += entries.size
+        entries.clear()
+    }
+
     fun release() {
         // O builder compartilha o looper; liberar preload antes do player encerra seus leitores.
         preload.release()
@@ -134,7 +146,8 @@ class ProgramPlayer(context: Context) {
     private fun mediaItem(item: ProgramItem): MediaItem = MediaItem.Builder()
         .setMediaId(item.id).setUri(item.audioUrl).setCustomCacheKey(item.id)
         .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
-            .setArtworkUri(item.artworkUrl?.let(Uri::parse)).setDurationMs(item.durationMs.takeIf { it > 0 })
+            .setArtworkUri(item.artworkUrl?.let(Uri::parse))
+            .setArtworkData(item.artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER).setDurationMs(item.durationMs.takeIf { it > 0 })
             .setIsBrowsable(false).setIsPlayable(true)
             .setMediaType(if (item.type == ProgramItemType.MUSIC) MediaMetadata.MEDIA_TYPE_MUSIC
                 else MediaMetadata.MEDIA_TYPE_MIXED)

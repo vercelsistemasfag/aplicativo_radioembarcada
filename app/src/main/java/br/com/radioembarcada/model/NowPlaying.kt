@@ -8,4 +8,5 @@ data class NowPlaying(
     val license: String,
     val source: String,
     val sourceUrl: String,
+    val artworkData: ByteArray? = null,
 )

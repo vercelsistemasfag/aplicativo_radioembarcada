@@ -1,6 +1,12 @@
 package br.com.radioembarcada.player
 
 object PlaybackConfiguration {
+    const val LOCAL_MIN_BUFFER_MS = 1_000
+    const val LOCAL_MAX_BUFFER_MS = 5_000
+    const val LOCAL_START_BUFFER_MS = 250
+    const val LOCAL_REBUFFER_MS = 500
+    const val LOCAL_NEXT_TRACK_PRELOAD_MS = 3_000L
+    const val LOCAL_SECOND_TRACK_PRELOAD_MS = 1_000L
     const val MIN_BUFFER_MS = 30_000
     const val STEADY_LOW_WATER_MS = 45_000
     const val DESIRED_BUFFER_MS = 60_000

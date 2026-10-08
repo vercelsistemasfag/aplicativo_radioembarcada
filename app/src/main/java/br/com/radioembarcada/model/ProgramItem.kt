@@ -15,11 +15,12 @@ data class ProgramItem(
     val license: String = "",
     val source: String = "",
     val sourceUrl: String = "",
+    val artworkData: ByteArray? = null,
 ) {
     companion object {
         fun music(track: Track) = ProgramItem(
             track.key, ProgramItemType.MUSIC, track.title, track.audioUrl, track.durationMs,
-            track.artist, track.artistKey, track.artworkUrl, track.license, track.source, track.sourceUrl,
+            track.artist, track.artistKey, track.artworkUrl, track.license, track.source, track.sourceUrl, track.artworkData,
         )
     }
 }

@@ -12,6 +12,7 @@ data class Track(
     val license: String,
     val source: String,
     val sourceUrl: String,
+    val artworkData: ByteArray? = null,
 ) {
     val key: String get() = "$source:$id"
     val artistKey: String get() = "$source:${artistId.ifBlank { artist.lowercase() }}"

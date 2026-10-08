@@ -41,7 +41,8 @@ class RadioController(context: Context) {
             override fun onDisconnected(controller: MediaController) {
                 mutableReady.value = false
                 mutableRequested.value = false
-                mutableState.value = ConnectionState.OFFLINE
+                mutableState.value = ConnectionState.PAUSED
+                mutableMessage.value = "Programação indisponível."
             }
         }).buildAsync()
 
@@ -55,7 +56,8 @@ class RadioController(context: Context) {
                 }
                 mutableReady.value = true
             } catch (_: Exception) {
-                mutableState.value = ConnectionState.OFFLINE
+                mutableState.value = ConnectionState.PAUSED
+                mutableMessage.value = "Programação indisponível."
             }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -73,7 +75,7 @@ class RadioController(context: Context) {
         mutableTrack.value = metadata.title?.toString()?.let { title ->
             NowPlaying(title, metadata.artist?.toString().orEmpty(), metadata.artworkUri?.toString(),
                 metadata.durationMs, metadata.extras?.getString("license").orEmpty(),
-                metadata.extras?.getString("source").orEmpty(), metadata.extras?.getString("sourceUrl").orEmpty())
+                metadata.extras?.getString("source").orEmpty(), metadata.extras?.getString("sourceUrl").orEmpty(), metadata.artworkData)
         }
     }
 

@@ -15,7 +15,7 @@ import androidx.media3.exoplayer.trackselection.ExoTrackSelection
 class RadioLoadControl(private val delegate: LoadControl = DefaultLoadControl.Builder()
     .setBufferDurationsMs(PlaybackConfiguration.MIN_BUFFER_MS, PlaybackConfiguration.MAX_BUFFER_MS,
         PlaybackConfiguration.START_BUFFER_MS, PlaybackConfiguration.REBUFFER_MS)
-    .setPrioritizeTimeOverSizeThresholds(true).build()) : LoadControl by delegate {
+    .setPrioritizeTimeOverSizeThresholds(true).build(), private val localSource: Boolean = false) : LoadControl by delegate {
     private var filling = true
     // Kotlin `by` não encaminha os métodos default desta interface Java.
     // Implementá-los explicitamente evita os defaults que lançam IllegalStateException.
@@ -33,6 +33,7 @@ class RadioLoadControl(private val delegate: LoadControl = DefaultLoadControl.Bu
 
     override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean {
         val permitted = delegate.shouldContinueLoading(parameters)
+        if (localSource) return permitted
         filling = PlaybackConfiguration.shouldFill(parameters.bufferedDurationUs / 1_000, filling)
         return permitted && filling
     }

@@ -50,7 +50,7 @@ class MusicArchiveTest(unittest.TestCase):
             def download(url, archive):
                 self.make_zip(archive, {"readme.txt": "no tracks"})
             with patch.object(music, "download_archive", side_effect=download):
-                with self.assertRaisesRegex(music.MusicArchiveError, "não contém MP3"):
+                with self.assertRaisesRegex(music.MusicArchiveError, "Nenhum MP3"):
                     music.prepare_music("https://example.invalid/archive", Path(directory))
 
     def test_zip_rejects_traversal_and_symlinks(self):

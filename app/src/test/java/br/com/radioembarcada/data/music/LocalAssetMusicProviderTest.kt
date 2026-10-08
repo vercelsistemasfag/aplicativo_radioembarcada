@@ -40,7 +40,7 @@ class LocalAssetMusicProviderTest {
         val tracks = source.fetchTracks(20, 0)
         val named = tracks.first { it.title == "Artist - Song" }
         assertEquals("Artist", named.artist)
-        val unknown = tracks.filter { it.artist == "Artista não informado" }
+        val unknown = tracks.filter { it.artist == "Rádio" }
         assertEquals(2, unknown.map { it.artistKey }.distinct().size)
         assertTrue(tracks.all { it.durationMs == 0L })
     }
@@ -79,7 +79,7 @@ class LocalAssetMusicProviderTest {
             fail("Deve informar biblioteca ausente")
         } catch (error: MusicProviderException) {
             assertFalse(error.retryable)
-            assertTrue(error.userMessage.contains("assets/music"))
+            assertEquals("Programação indisponível.", error.userMessage)
         }
     }
 
@@ -120,10 +120,73 @@ class LocalAssetMusicProviderTest {
             assertTrue(batch.isNotEmpty())
             assertTrue(batch.all { it.type == ProgramItemType.MUSIC && it.audioUrl.startsWith("asset:///music/") })
             assertTrue(batch.none { it.id in pending })
-            previous?.let { assertNotEquals(it.artistKey, batch.first().artistKey) }
-            assertTrue(batch.zipWithNext().all { (a, b) -> a.id != b.id && a.artistKey != b.artistKey })
+            previous?.let { assertNotEquals(it.id, batch.first().id) }
+            assertTrue(batch.zipWithNext().all { (a, b) -> a.id != b.id })
             previous = batch.last()
             pending = batch.takeLast(4).map { it.id }.toSet()
         }
     }
+
+    @Test fun completeLibraryIsTraversedBeforeAnyTrackRepeatsAndThenReshuffled() = runBlocking {
+        val source = provider((0 until 77).map { "music/MPB/$it.mp3" })
+        val programming = AutomaticProgramming(source, br.com.radioembarcada.programming.QueueBuilder(kotlin.random.Random(15)))
+        val firstCycle = mutableListOf<br.com.radioembarcada.model.ProgramItem>()
+        repeat(4) { firstCycle += programming.nextBatch(firstCycle.lastOrNull()) }
+        assertEquals(77, firstCycle.size)
+        assertEquals(77, firstCycle.map { it.id }.distinct().size)
+        val secondCycle = mutableListOf<br.com.radioembarcada.model.ProgramItem>()
+        repeat(4) { secondCycle += programming.nextBatch(secondCycle.lastOrNull() ?: firstCycle.last()) }
+        assertEquals(firstCycle.map { it.id }.toSet(), secondCycle.map { it.id }.toSet())
+        assertNotEquals(firstCycle.map { it.id }, secondCycle.map { it.id })
+        assertNotEquals(firstCycle.last().id, secondCycle.first().id)
+    }
+
+    @Test fun singleArtistDoesNotPreventFullLocalLibraryFromPlaying() = runBlocking {
+        val source = provider((0 until 7).map { "music/MPB/$it.mp3" }) { LocalTrackMetadata(artist = "Same") }
+        val batch = AutomaticProgramming(source).nextBatch()
+        assertEquals(7, batch.size)
+        assertEquals(7, batch.map { it.id }.distinct().size)
+    }
+
+    @Test fun failedTracksAreExcludedWithoutBlockingTheNextCycle() = runBlocking {
+        val source = provider(listOf("music/good.mp3", "music/bad.mp3"))
+        val programming = AutomaticProgramming(source)
+        val first = programming.nextBatch()
+        val failed = first.filter { it.title == "bad" }.map { it.id }.toSet()
+        val next = programming.nextBatch(first.first { it.title == "bad" }, excludedIds = failed)
+        assertEquals("good", next.single().title)
+        assertTrue(programming.nextBatch(excludedIds = first.map { it.id }.toSet()).isEmpty())
+    }
+
+    @Test fun embeddedCoverReachesProgramItemAndOversizedPicturesAreOmitted() = runBlocking {
+        val cover = byteArrayOf(1, 2, 3)
+        val track = provider(listOf("music/cover.mp3")) { LocalTrackMetadata(artworkData = cover) }
+            .fetchTracks(20, 0).single()
+        assertArrayEquals(cover, br.com.radioembarcada.model.ProgramItem.music(track).artworkData)
+        val large = provider(listOf("music/large.mp3")) {
+            LocalTrackMetadata(artworkData = ByteArray(LocalAssetMusicProvider.MAX_ARTWORK_BYTES + 1))
+        }.fetchTracks(20, 0).single()
+        assertNull(large.artworkData)
+    }
+
+    @Test fun unreadableSubfolderDoesNotHideOtherMusicAndIgnoredFilesAreLogged() {
+        val messages = mutableListOf<String>()
+        val paths = findMp3Assets("music", { path -> when (path) {
+            "music" -> listOf("bad", "MPB", "readme.txt")
+            "music/bad" -> throw IOException("bad folder")
+            "music/MPB" -> listOf("song.mp3")
+            else -> emptyList()
+        } }, messages::add)
+        assertEquals(listOf("music/MPB/song.mp3"), paths)
+        assertTrue(messages.any { "bad" in it })
+        assertTrue(messages.any { "readme.txt" in it })
+    }
+
+    @Test fun singleTrackCanResumeAtTheEndWithoutAnImmediateDuplicateWhileStillQueued() = runBlocking {
+        val programming = AutomaticProgramming(provider(listOf("music/one.mp3")))
+        val first = programming.nextBatch().single()
+        assertTrue(programming.nextBatch(first, setOf(first.id)).isEmpty())
+        assertEquals(first.id, programming.nextBatch(first).single().id)
+    }
+
 }

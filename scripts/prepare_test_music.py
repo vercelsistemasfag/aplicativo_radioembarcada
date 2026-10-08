@@ -41,10 +41,12 @@ def download_archive(url, output):
     escaped = url.replace("\\", "\\\\").replace('"', '\\"')
     result = subprocess.run(
         ["curl", "--disable", "--fail", "--silent", "--location", "--proto", "=https",
-         "--proto-redir", "=https", "--retry", "3", "--connect-timeout", "20",
-         "--max-time", "300", "--output", str(output), "--config", "-"],
-        input=f'url = "{escaped}"\n', text=True, capture_output=True, timeout=360,
+         "--proto-redir", "=https", "--connect-timeout", "20",
+         "--max-time", "1800", "--output", str(output), "--config", "-"],
+        input=f'url = "{escaped}"\n', text=True, capture_output=True, timeout=1860,
     )
+    if result.returncode == 22:
+        raise MusicArchiveError("Erro HTTP ao baixar a biblioteca de testes. Verifique validade e acesso da URL assinada.")
     if result.returncode:
         raise MusicArchiveError("Falha no download da biblioteca opcional. Verifique acesso/validade do link configurado.")
 
@@ -93,10 +95,13 @@ def prepare_music(url, destination):
         return 0
     with tempfile.TemporaryDirectory(prefix="radio-music-") as folder:
         temporary = Path(folder)
-        archive = temporary / "library.archive"
+        archive = temporary / "MPB.rar"
         extracted = temporary / "extracted"
         extracted.mkdir()
         download_archive(url, archive)
+        if not archive.is_file() or archive.stat().st_size <= 0:
+            raise MusicArchiveError("O arquivo baixado está ausente ou vazio.")
+        print(f"Arquivo baixado: {archive.stat().st_size} bytes ({archive.stat().st_size / (1024 ** 2):.1f} MiB).")
         extract_archive(archive, extracted)
         tracks = []
         for root, directories, files in os.walk(extracted, followlinks=False):
@@ -104,7 +109,7 @@ def prepare_music(url, destination):
                 raise MusicArchiveError("Links simbólicos não são aceitos na biblioteca.")
             tracks.extend(Path(root) / name for name in files if Path(name).suffix.lower() == ".mp3")
         if not tracks:
-            raise MusicArchiveError("O arquivo configurado não contém MP3.")
+            raise MusicArchiveError("Nenhum MP3 foi encontrado após a extração da biblioteca de testes.")
         for track in tracks:
             target = destination / track.relative_to(extracted)
             target.parent.mkdir(parents=True, exist_ok=True)

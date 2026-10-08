@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import br.com.radioembarcada.BuildConfig
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
@@ -43,6 +45,8 @@ class RadioService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     private lateinit var network: NetworkMonitor
     private lateinit var station: MediaItem
+    private val localSource get() = !(application as RadioApplication).musicProvider.requiresNetwork
+    private val failedLocalIds = mutableSetOf<String>()
     private val sourceAvailable get() = (application as RadioApplication).musicProvider.isAvailable(network.isConnected)
     private val programming get() = (application as RadioApplication).programming
     private val handler = Handler(Looper.getMainLooper())
@@ -97,7 +101,7 @@ class RadioService : MediaLibraryService() {
             .setMediaMetadata(MediaMetadata.Builder().setTitle(tenant.radioName).setArtist(tenant.companyName)
                 .setIsBrowsable(false).setIsPlayable(true)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION).build()).build()
-        engine = ProgramPlayer(this)
+        engine = ProgramPlayer(this, localSource)
         val sessionPlayer = object : ForwardingPlayer(player) {
             override fun play() {
                 // Media3 1.6 também chama play após falha/cancelamento de onPlaybackResumption.
@@ -139,9 +143,26 @@ class RadioService : MediaLibraryService() {
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // Executar após o lote de eventos do player, sem reentrância na mudança de timeline.
-                handler.post { engine.trimPlayed(); engine.updatePreload(sourceAvailable); maybeRefill() }
+                handler.post {
+                    engine.trimPlayed(); engine.updatePreload(sourceAvailable); maybeRefill()
+                    if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", "Provider=${(application as RadioApplication).musicProvider.javaClass.simpleName}; atual=${player.currentMediaItem?.mediaId}; próxima=${engine.items.getOrNull(player.currentMediaItemIndex + 1)?.id}")
+                }
             }
             override fun onPlayerError(error: PlaybackException) {
+                if (localSource) {
+                    if (BuildConfig.DEBUG) Log.w("RadioDiagnostics", "Faixa ignorada: ${player.currentMediaItem?.mediaId}; erro=${error.errorCodeName}")
+                    player.currentMediaItem?.mediaId?.let { failedLocalIds.add(it) }
+                    handler.post {
+                        if (!desiredPlayback) return@post
+                        if (player.hasNextMediaItem()) {
+                            player.seekToNextMediaItem(); player.prepare(); player.play()
+                        } else {
+                            engine.clearEndedQueue()
+                            resumeWithCatalog()
+                        }
+                    }
+                    return
+                }
                 terminalErrors++
                 recovering = true
                 message = "Não foi possível tocar esta faixa. Tentando recuperar a programação."
@@ -185,7 +206,8 @@ class RadioService : MediaLibraryService() {
         message = ""
         initialJob = scope.launch {
             try {
-                val batch = programming.nextBatch()
+                val batch = programming.nextBatch(excludedIds = failedLocalIds)
+                if (batch.isEmpty()) throw MusicProviderException("Programação indisponível.", false)
                 if (!future.isCancelled) {
                     message = ""
                     future.set(engine.register(batch))
@@ -230,12 +252,21 @@ class RadioService : MediaLibraryService() {
             player.mediaItemCount - player.currentMediaItemIndex - 1 > ProgrammingConfiguration.REFILL_REMAINING) return
         refillJob = scope.launch {
             try {
-                val batch = programming.nextBatch(engine.items.lastOrNull(), engine.items.map { it.id }.toSet())
                 val ended = player.playbackState == Player.STATE_ENDED
+                val queued = if (ended) emptySet() else engine.items.map { it.id }.toSet()
+                val batch = programming.nextBatch(engine.items.lastOrNull(), queued, failedLocalIds)
+                if (batch.isEmpty()) {
+                    if (ended) {
+                        message = "Programação indisponível."
+                        desiredPlayback = false
+                    }
+                    return@launch
+                }
+                if (ended && localSource) engine.clearEndedQueue()
                 engine.append(batch)
                 message = ""
-                if (ended && desiredPlayback && player.hasNextMediaItem()) {
-                    player.seekToNextMediaItem()
+                if (ended && desiredPlayback && (localSource || player.hasNextMediaItem())) {
+                    if (!localSource) player.seekToNextMediaItem()
                     player.prepare()
                     player.play()
                 }
@@ -278,7 +309,7 @@ class RadioService : MediaLibraryService() {
         session.setSessionExtras(Bundle().apply {
             putString(STATE_KEY, state.name)
             putBoolean(REQUESTED_KEY, desiredPlayback)
-            putBoolean(CONNECTED_KEY, network.isConnected)
+            putBoolean(CONNECTED_KEY, sourceAvailable)
             putString(MESSAGE_KEY, message)
             putLong("bufferedDurationMs", player.totalBufferedDuration)
         })

@@ -3,6 +3,7 @@ package br.com.radioembarcada.data.music
 import br.com.radioembarcada.model.Track
 
 interface MusicProvider {
+    val providesCompleteCatalog: Boolean get() = false
     val requiresNetwork: Boolean get() = true
     fun isAvailable(connected: Boolean): Boolean = !requiresNetwork || connected
     suspend fun fetchTracks(limit: Int, offset: Int): List<Track>

@@ -1,16 +1,16 @@
 # Rádio Embarcada — desenvolvimento com assets locais
 
-Rádio Alce com **faixas musicais individuais**. No APK de debug, `LocalAssetMusicProvider` busca MP3 recursivamente em `app/src/main/assets/music`, incluindo `music/MPB/` e outras subpastas. O aplicativo monta a sequência e escolhe a próxima faixa. Jamendo permanece implementado para uso futuro, selecionado na composição de builds não debug. **Não utiliza emissora, endpoint de rádio contínua ou fallback de rádio ao vivo.**
+Rádio Alce com **faixas musicais individuais**. Nesta fase, em debug e release, `LocalAssetMusicProvider` busca MP3 recursivamente em `app/src/main/assets/music`, incluindo `music/MPB/` e outras subpastas. O aplicativo monta a sequência e escolhe a próxima faixa. Jamendo permanece implementado para uso futuro, porém inativo em todas as variantes atuais. **Não utiliza emissora, endpoint de rádio contínua ou fallback de rádio ao vivo.**
 
 ## Desenvolvimento local
 
 Mantenha os MP3 de testes em `app/src/main/assets/music/MPB/` ou qualquer subpasta de `music/`. Nenhum nome de arquivo ou quantidade é fixado no código. Recompile e reinstale após adicionar/remover arquivos: o provider acessa os assets **do APK instalado**, não a pasta do computador em tempo de execução.
 
-O catálogo é lido em `Dispatchers.IO` e mantido em memória durante a sessão. A busca aceita `.mp3` e `.MP3`, ignora outros arquivos e usa o caminho completo como ID estável. Título, artista e duração são lidos das tags pelo MediaMetadataRetriever; sem título válido, usa o nome completo do arquivo sem a extensão. Tags defeituosas não interrompem a construção do catálogo; artista ausente pode ser inferido do padrão `Artista - Título.mp3`. Artista ausente é mostrado como “Artista não informado”; cada arquivo sem artista recebe identidade própria para não reduzir toda a fila a uma única faixa. Não se atribui licença Creative Commons nem capa fictícia à biblioteca local.
+O catálogo é lido em `Dispatchers.IO` e mantido em memória durante a sessão. A busca aceita `.mp3` e `.MP3`, ignora outros arquivos e usa o caminho completo como ID estável. Título, artista e duração são lidos das tags pelo MediaMetadataRetriever; sem título válido, usa o nome completo do arquivo sem a extensão. Tags defeituosas não interrompem a construção do catálogo; artista ausente pode ser inferido do padrão `Artista - Título.mp3`. Artista ausente é mostrado como “Rádio”; cada arquivo sem artista recebe identidade própria para não reduzir toda a fila a uma única faixa. A capa embutida é transmitida à MediaSession/UI quando disponível e até 256 KiB; imagens maiores são omitidas para limitar memória e mensagens IPC. Não se atribui licença Creative Commons nem capa fictícia à biblioteca local.
 
-A paginação circular alimenta os mesmos lotes de até 20 `ProgramItem(MUSIC)`, com reposição automática e as regras existentes de repetição. A prevenção de artistas consecutivos usa tags/nome quando o artista é conhecido. Assets usam `asset:///music/...` com caracteres escapados, são lidos diretamente pelo DefaultDataSource e não são duplicados no cache HTTP. MP3 são empacotados sem compressão adicional para leitura de metadados/seek. Não há dependências ou permissões novas.
+O catálogo completo alimenta lotes de até 20 `ProgramItem(MUSIC)`: todas as faixas são selecionadas uma vez por ciclo, antes de uma nova ordem aleatória. Faixas ainda pendentes não são duplicadas; faixas com erro de reprodução são excluídas da sessão. A preferência por artistas diferentes não impede a continuidade quando só resta um artista. A prevenção de artistas consecutivos usa tags/nome quando o artista é conhecido. Assets usam `asset:///music/...` com caracteres escapados, são lidos diretamente pelo DefaultDataSource e não são duplicados no cache HTTP. MP3 são empacotados sem compressão adicional para leitura de metadados/seek. Não há dependências ou permissões novas.
 
-Debug funciona sem internet e sem client_id: carregamento inicial, reposição e preload consideram a disponibilidade do provider local. Media3, MediaSession, MediaLibraryService, notificação, foco de áudio, segundo plano e estrutura Android Auto permanecem. Uma biblioteca vazia gera uma mensagem de configuração na tela, sem fallback para Jamendo. Jamendo continua usando cache, buffer, filtros e reconexão descritos abaixo quando selecionado.
+Debug funciona sem internet e sem client_id: carregamento inicial, reposição e preload consideram a disponibilidade do provider local. Media3, MediaSession, MediaLibraryService, notificação, foco de áudio, segundo plano e estrutura Android Auto permanecem. Uma biblioteca vazia mostra “Programação indisponível.”, sem crash ou fallback para Jamendo; o Logcat de debug informa a contagem zero. Offline não produz aviso de internet nem estado “Sem conexão” para esta fonte. Jamendo continua usando cache, buffer, filtros e reconexão descritos abaixo quando selecionado.
 
 Para testar: gere o APK no ambiente que contém os arquivos, abra Rádio Alce, toque Play, confira os metadados, passe várias faixas, pause/retome e teste modo avião, segundo plano, tela apagada e controles da notificação. Para validar reposição, avance além do primeiro lote de 20 faixas. Com fonte local, modo avião verifica independência da rede; não mede tolerância do streaming Jamendo.
 
@@ -20,7 +20,7 @@ MP3 e `MPB.rar` permanecem ignorados, incluindo subpastas e extensões maiúscul
 
 - Android Studio Meerkat 2024.3.1 ou superior, compatível com AGP 8.9.2.
 - JDK completo 17; SDK Platform 35 e Build Tools 35.0.0.
-- Android 8.0/API 26 ou superior; debug local funciona sem internet após instalar o APK com os MP3.
+- Android 8.0/API 26 ou superior; a fonte local funciona sem internet após instalar o APK com os MP3.
 - Gradle 8.11.1 incluído no wrapper.
 
 Abra a raiz no Android Studio, sincronize, confira os assets locais e execute o módulo `app` em debug. A identidade Alce é local em `app/src/main/assets/tenant.json`. Não há login, escolha de gêneros, gerenciamento de músicas, anúncios ou backend nesta etapa.
@@ -36,24 +36,27 @@ No Windows, use `gradlew.bat`. Configure `JAVA_HOME` para o JDK e `ANDROID_HOME`
 
 O workflow existente **Android debug** (`.github/workflows/android-debug.yml`) roda em Ubuntu com **Temurin JDK 17**, Android SDK **Platform 35 / Build Tools 35.0.0**, Gradle Wrapper **8.11.1** validado e cache de Gradle. Não usa o SDK do Codespaces. Executa preparação opcional da biblioteca, testes do preparador, `testDebugUnitTest`, `lintDebug` e `assembleDebug`, nessa ordem. Uma falha impede o upload; o APK é conferido, inclusive sua assinatura, antes de publicar o Artifact.
 
-A cada push em `main`, ou em **GitHub → Actions → Android debug → Run workflow → main**, o resultado bem-sucedido disponibiliza **Artifacts → radio-embarcada-debug-apk**, contendo **app-debug.apk**, por sete dias. O caminho de build é `app/build/outputs/apk/debug/app-debug.apk`. O APK não é versionado.
+A cada push em `main`, ou em **GitHub → Actions → Android debug → Run workflow → main**, o resultado bem-sucedido disponibiliza **Artifacts → radio-embarcada-debug-com-musicas**, contendo **app-debug.apk**, por sete dias. O caminho de build é `app/build/outputs/apk/debug/app-debug.apk`. O APK não é versionado.
 
-### Biblioteca privada opcional no Actions
+### Biblioteca privada no Actions — APK de teste com músicas
 
-1. Disponibilize um arquivo **RAR (RAR4/RAR5) ou ZIP sem senha** em um link HTTPS de download direto acessível pelo runner. Subpastas são preservadas; somente MP3 são copiados para os assets.
-2. No repositório, abra **Settings → Secrets and variables → Actions → New repository secret**.
-3. Use o nome **MUSIC_ARCHIVE_URL** e coloque o link como valor. Não coloque o link no YAML, README ou código. Um link assinado precisa continuar válido durante o download.
-4. Execute **Run workflow**. A biblioteca é baixada em diretório temporário, extraída e copiada para `app/src/main/assets/music/` antes dos testes/build. O runner instala `unrar` automaticamente quando necessário; ZIP usa a biblioteca padrão Python.
+O secret de repositório **MUSIC_ARCHIVE_URL** contém uma URL HTTPS assinada temporária para `MPB.rar`. O runner Ubuntu instala `unrar`, baixa o arquivo em diretório temporário com timeout de até 30 minutos e valida que não está vazio. O log informa apenas detecção do secret, tamanho do RAR e contagem de músicas; nunca imprime a URL. RAR4/RAR5 e ZIP sem senha são aceitos, preservando subpastas.
 
-**Sem o secret**, aparece no log uma mensagem de biblioteca opcional ausente e o APK é gerado normalmente, sem músicas. Ele abre e informa biblioteca vazia ao pressionar Play, sem emissora externa ou fallback para Jamendo. **Com o secret**, o APK contém as músicas e funciona sem internet após instalado. URL inválida, download/extração com erro ou arquivo configurado sem MP3 falham claramente, sem divulgar a URL. A URL não aparece em comandos ou mensagens de erro, e secrets são mascarados pelo Actions.
+Após a extração, os MP3 são copiados para `app/src/main/assets/music/`. Zero arquivos provoca falha **antes do build** com “Nenhum MP3 foi encontrado após a extração da biblioteca de testes.” Não há quantidade fixa de 77 no código. Este workflow destinado ao APK com músicas exige o secret; erro HTTP falha imediatamente. Se a URL expirar, atualize o secret em **Settings → Secrets and variables → Actions → MUSIC_ARCHIVE_URL**, sem escrever seu valor no repositório, e execute novamente.
 
-O preparador também aceita uma variável de Actions com esse nome, consultada pela API sem interpolar o valor no log. Isso depende de permissão de leitura de variáveis pelo token do runner; **prefira o secret**, que não exige essa consulta e tem precedência. Nenhum token adicional é necessário para o modo recomendado.
+São executados `./gradlew test testDebugUnitTest`, lint e assembleDebug. Ao final, o APK é inspecionado como ZIP: todos os caminhos MP3 de `assets/music/` devem corresponder à biblioteca antes do build e estar não vazios. O log mostra a contagem incorporada e o tamanho do APK. O Artifact **radio-embarcada-debug-com-musicas** contém `app-debug.apk`, com retenção de sete dias e sem compressão extra do Artifact. O APK grande é esperado; nenhum áudio é convertido ou reduzido.
 
-MP3 recursivos, `MPB.rar`, outros RAR, APKs, configurações locais e caches continuam ignorados pelo Git. A injeção não faz commit nem push de músicas. Arquivos existentes no ambiente local não são apagados nem sobrescritos. O Artifact com biblioteca contém as músicas privadas: distribua somente para os testes autorizados; isso não presume direitos comerciais futuros.
+O download ocorre somente durante o job: **o aplicativo instalado não usa R2, a URL, autenticação ou internet**. A URL não é incorporada ao APK. A biblioteca e o RAR não entram no Git, e músicas locais existentes não são apagadas nem sobrescritas. O Artifact com biblioteca destina-se exclusivamente aos testes privados autorizados.
+
+Sem biblioteca no computador, o projeto ainda compila e abre normalmente, informando “Programação indisponível.” ao pressionar Play. **Biblioteca não presente neste workspace; o APK precisa ser compilado em um ambiente que contenha os MP3 em assets/music.** O Actions pode preparar esse ambiente com o secret já configurado.
+
+### Diagnóstico de desenvolvimento
+
+Somente builds DEBUG registram a tag `RadioDiagnostics`: provider ativo, quantidade encontrada, faixa atual/próxima, arquivos ignorados e erros de reprodução. Consulte com `adb logcat -s RadioDiagnostics`. A UI permanece uma rádio simples; não mostra termos de arquivos, playlists ou provider. Ausência de metadados usa o nome do arquivo; áudio corrompido é registrado, excluído e pulado na mesma sessão/player.
 
 ## Configurar a Jamendo para uso futuro
 
-A composição está em `RadioApplication.musicProvider`: debug usa assets e builds não debug preservam o adaptador Jamendo. Para testar Jamendo em debug futuramente, substitua somente a seleção nessa composição e configure o client_id; a fila e o player não dependem do catálogo. As instruções e o roteiro de streaming abaixo se aplicam à fonte Jamendo.
+A composição está em `RadioApplication.musicProvider`: todas as variantes atuais usam assets; Jamendo está preservado e inativo. Para testar Jamendo em debug futuramente, substitua somente a seleção nessa composição e configure o client_id; a fila e o player não dependem do catálogo. As instruções e o roteiro de streaming abaixo se aplicam à fonte Jamendo.
 
 Obtenha seu próprio **client_id** registrando uma aplicação no [portal da Jamendo](https://devportal.jamendo.com/). Nenhuma chave de demonstração é fornecida ou inventada.
 
@@ -102,7 +105,7 @@ MusicProvider → AutomaticProgramming / QueueBuilder → ProgramItem → Progra
 | `ui` | Compose/ViewModel; apenas comandos ao MediaController e representação dos estados/metadados. |
 | `storage` / `data` | Configuração local da identidade do tenant e repositório. |
 
-`RadioApplication` conecta a fonte local em debug e Jamendo em builds não debug ao contrato. Para trocar o catálogo, implemente `MusicProvider.fetchTracks(limit, offset)`, declare `requiresNetwork=false` se for uma fonte local, devolva modelos internos com URLs individuais e direitos apropriados e substitua a implementação nessa composição. A fila, o serviço e a UI continuam usando os mesmos contratos. O player atual suporta áudio progressivo; um catálogo com outro protocolo pode exigir o módulo correspondente do Media3.
+`RadioApplication` conecta exclusivamente a fonte local ao contrato nesta fase. Para trocar o catálogo, implemente `MusicProvider.fetchTracks(limit, offset)`, declare `requiresNetwork=false` se for uma fonte local, devolva modelos internos com URLs individuais e direitos apropriados e substitua a implementação nessa composição. A fila, o serviço e a UI continuam usando os mesmos contratos. O player atual suporta áudio progressivo; um catálogo com outro protocolo pode exigir o módulo correspondente do Media3.
 
 Os tipos `MUSIC`, `STATION_ID`, `JINGLE`, `ADVERTISEMENT` e `ANNOUNCEMENT` já podem ser representados por `ProgramItem`. Apenas `MUSIC` é produzido atualmente. Não há implementação de vinhetas, jingles, anúncios ou motor comercial. A representação genérica também permite introduzir uma estratégia de transição/crossfade futura sem colocar regras de catálogo no player.
 
@@ -113,6 +116,9 @@ Os tipos `MUSIC`, `STATION_ID`, `JINGLE`, `ADVERTISEMENT` e `ANNOUNCEMENT` já p
 As faixas anteriores são removidas da timeline/gerenciador após a transição, preservando posição e buffer da faixa atual. Conteúdo passado pode reaparecer em lotes futuros quando necessário, mas não imediatamente. ExoPlayer faz a transição natural entre as fontes, sem outro player tocando em paralelo. A UI e a biblioteca de mídia apresentam uma única estação, sem expor gerenciamento de playlists.
 
 ## Buffer, preload e cache
+
+A fonte local usa LoadControl com **mínimo 1 s / máximo 5 s / início 250 ms / rebuffer 500 ms**, sem a histerese remota. O preload oficial prepara **3 s da próxima faixa e 1 s da segunda**, sem esperar 30 s do buffer atual. Usa wake mode local, DefaultDataSource/AssetDataSource e nenhum cache de áudio duplicado. As configurações remotas abaixo permanecem preservadas para o futuro provedor de rede.
+
 
 Tudo está centralizado em **`player/PlaybackConfiguration.kt`**:
 
@@ -168,13 +174,13 @@ Mantidas Kotlin/Compose Compiler 2.1.20, Compose BOM 2025.04.01/Material 3, Acti
 
 O workflow é a fonte oficial dos resultados: consulte os passos e o resumo da execução no Actions. O resumo informa quantidade de testes Android, erros/avisos de lint e MP3 realmente presentes no APK. Os testes não dependem da biblioteca privada de 77 músicas.
 
-A suíte atual contém **41 testes JVM** (provider/recursão/subpastas/metadados/fallback/biblioteca vazia, fila/repetição/ProgramItem, conversão Jamendo, estados, buffer e política de erros) e **8 testes Python** do preparador (biblioteca opcional, ZIP, RAR4/RAR5 com mocks, caminhos inválidos, credencial sanitizada e preservação local). Para repetir a validação:
+A suíte atual contém **48 testes JVM por variante** (provider/recursão/subpastas/metadados/fallback/biblioteca vazia, fila/repetição/ProgramItem, conversão Jamendo, estados, buffer e política de erros) e **8 testes Python** do preparador (biblioteca opcional, ZIP, RAR4/RAR5 com mocks, caminhos inválidos, credencial sanitizada e preservação local). Para repetir a validação:
 
 ```sh
 python3 -m unittest discover -s scripts -p 'test_*.py' -v
 ./gradlew testDebugUnitTest lintDebug assembleDebug --warning-mode all --max-workers=2
 ```
 
-Os avisos de lint existentes são revisados e permanecem visíveis: sugestões de atualização de dependências, serviço exportado para controladores e configuração HTTP herdada. Não se suprimem erros para liberar o build. Os relatórios locais ficam em `app/build/reports/`. MediaSession/MediaLibraryService, foco de áudio, metadados e arquitetura multi-tenant foram preservados; testes de áudio, chamadas e Android Auto precisam de dispositivo.
+Os avisos de lint existentes são revisados e permanecem visíveis: sugestões de atualização de dependências, serviço exportado para controladores e configuração HTTP herdada e target API 35. Não se suprimem erros para liberar o build. Os relatórios locais ficam em `app/build/reports/`. MediaSession/MediaLibraryService, foco de áudio, metadados e arquitetura multi-tenant foram preservados; testes de áudio, chamadas e Android Auto precisam de dispositivo.
 
-Arquivos locais inexistentes/inacessíveis e formatos defeituosos têm recuperação limitada, em vez de retry infinito; falhas transitórias de rede mantêm o backoff e o áudio preparado. O player/sessão não são recriados entre faixas. O encaminhamento explícito de métodos do LoadControl, que corrige o fechamento da versão anterior ao abrir, continua coberto pelos testes.
+Arquivos locais inexistentes/inacessíveis e formatos defeituosos são pulados e excluídos da sessão, sem retry infinito; falhas transitórias de rede mantêm o backoff e o áudio preparado. O player/sessão não são recriados entre faixas. O encaminhamento explícito de métodos do LoadControl, que corrige o fechamento da versão anterior ao abrir, continua coberto pelos testes.
