@@ -10,6 +10,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -56,10 +57,14 @@ class ProgramPlayer(context: Context) {
         val upstream = ProgressiveMediaSource.Factory(dataSource)
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy())
+        val local = ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
+            .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
+            .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy())
         var manager: DefaultPreloadManager? = null
         val managedFactory = object : MediaSource.Factory by upstream {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource =
-                manager?.getMediaSource(mediaItem) ?: upstream.createMediaSource(mediaItem)
+                manager?.getMediaSource(mediaItem) ?: if (mediaItem.localConfiguration?.uri?.scheme == "asset")
+                    local.createMediaSource(mediaItem) else upstream.createMediaSource(mediaItem)
         }
         val control = TargetPreloadStatusControl<Int> { ranking ->
             if (!preloadEnabled) null else when (ranking - currentRanking) {
@@ -95,9 +100,9 @@ class ProgramPlayer(context: Context) {
         player.addMediaSources(media.map { checkNotNull(preload.getMediaSource(it)) })
     }
 
-    fun updatePreload(connected: Boolean) {
+    fun updatePreload(sourceAvailable: Boolean) {
         val ranking = baseRanking + player.currentMediaItemIndex.coerceAtLeast(0)
-        val enabled = connected && player.playWhenReady && player.isPlaying &&
+        val enabled = sourceAvailable && player.playWhenReady && player.isPlaying &&
             player.totalBufferedDuration >= PlaybackConfiguration.MIN_BUFFER_MS
         if (ranking != currentRanking || enabled != preloadEnabled) {
             currentRanking = ranking
@@ -129,7 +134,7 @@ class ProgramPlayer(context: Context) {
     private fun mediaItem(item: ProgramItem): MediaItem = MediaItem.Builder()
         .setMediaId(item.id).setUri(item.audioUrl).setCustomCacheKey(item.id)
         .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
-            .setArtworkUri(item.artworkUrl?.let(Uri::parse)).setDurationMs(item.durationMs)
+            .setArtworkUri(item.artworkUrl?.let(Uri::parse)).setDurationMs(item.durationMs.takeIf { it > 0 })
             .setIsBrowsable(false).setIsPlayable(true)
             .setMediaType(if (item.type == ProgramItemType.MUSIC) MediaMetadata.MEDIA_TYPE_MUSIC
                 else MediaMetadata.MEDIA_TYPE_MIXED)

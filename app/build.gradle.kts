@@ -23,8 +23,8 @@ android {
         applicationId = "br.com.radioembarcada"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.1"
+        versionCode = 3
+        versionName = "0.3.0"
         buildConfigField("String", "JAMENDO_CLIENT_ID", JsonOutput.toJson(jamendoClientId))
     }
     compileOptions {
@@ -33,6 +33,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
+    // Permite ler metadados via AssetFileDescriptor e buscar posições sem descompactar MP3.
+    androidResources { noCompress += listOf("mp3", "MP3", "Mp3", "mP3") }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))

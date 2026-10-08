@@ -43,6 +43,7 @@ class RadioService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     private lateinit var network: NetworkMonitor
     private lateinit var station: MediaItem
+    private val sourceAvailable get() = (application as RadioApplication).musicProvider.isAvailable(network.isConnected)
     private val programming get() = (application as RadioApplication).programming
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -63,7 +64,7 @@ class RadioService : MediaLibraryService() {
     private var hasPlayed = false
     private val retry = Runnable {
         retryScheduled = false
-        if (desiredPlayback && network.isConnected) {
+        if (desiredPlayback && sourceAvailable) {
             when {
                 player.mediaItemCount == 0 -> resumeWithCatalog()
                 player.playerError != null -> {
@@ -82,7 +83,7 @@ class RadioService : MediaLibraryService() {
     }
     private val poll = object : Runnable {
         override fun run() {
-            engine.updatePreload(network.isConnected)
+            engine.updatePreload(sourceAvailable)
             maybeRefill()
             publishState()
             handler.postDelayed(this, PlaybackConfiguration.STATE_POLL_MS)
@@ -112,8 +113,8 @@ class RadioService : MediaLibraryService() {
             .setSessionActivity(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build()
         network = NetworkMonitor(this, handler) {
-            engine.updatePreload(network.isConnected)
-            if (desiredPlayback && network.isConnected && (player.playerError != null ||
+            engine.updatePreload(sourceAvailable)
+            if (desiredPlayback && sourceAvailable && (player.playerError != null ||
                     player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED)) scheduleRecovery()
             publishState()
         }
@@ -133,12 +134,12 @@ class RadioService : MediaLibraryService() {
                 if (!playWhenReady) {
                     desiredPlayback = false
                     cancelRecovery()
-                    engine.updatePreload(network.isConnected)
+                    engine.updatePreload(sourceAvailable)
                 }
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // Executar após o lote de eventos do player, sem reentrância na mudança de timeline.
-                handler.post { engine.trimPlayed(); engine.updatePreload(network.isConnected); maybeRefill() }
+                handler.post { engine.trimPlayed(); engine.updatePreload(sourceAvailable); maybeRefill() }
             }
             override fun onPlayerError(error: PlaybackException) {
                 terminalErrors++
@@ -172,7 +173,7 @@ class RadioService : MediaLibraryService() {
         refillJob?.cancel()
         cancelRecovery()
         player.pause()
-        engine.updatePreload(network.isConnected)
+        engine.updatePreload(sourceAvailable)
         publishState()
     }
 
@@ -224,7 +225,7 @@ class RadioService : MediaLibraryService() {
     }
 
     private fun maybeRefill() {
-        if (!desiredPlayback || !network.isConnected || catalogBlocked || retryScheduled ||
+        if (!desiredPlayback || !sourceAvailable || catalogBlocked || retryScheduled ||
             refillJob?.isActive == true || player.mediaItemCount == 0 ||
             player.mediaItemCount - player.currentMediaItemIndex - 1 > ProgrammingConfiguration.REFILL_REMAINING) return
         refillJob = scope.launch {
@@ -238,7 +239,7 @@ class RadioService : MediaLibraryService() {
                     player.prepare()
                     player.play()
                 }
-                engine.updatePreload(network.isConnected)
+                engine.updatePreload(sourceAvailable)
             } catch (_: CancellationException) {
                 // Pause preserva a fila/buffer atuais, mas encerra a consulta em andamento.
             } catch (error: MusicProviderException) {
@@ -254,7 +255,7 @@ class RadioService : MediaLibraryService() {
     private fun scheduleRecovery() {
         if (!desiredPlayback || retryScheduled || catalogBlocked) return
         recovering = true
-        if (network.isConnected) {
+        if (sourceAvailable) {
             retryScheduled = true
             handler.postDelayed(retry, RetryPolicy.delayMillis(retryAttempt))
             retryAttempt = (retryAttempt + 1).coerceAtMost(5)
@@ -271,7 +272,7 @@ class RadioService : MediaLibraryService() {
 
     private fun publishState() {
         if (!::session.isInitialized || !::network.isInitialized) return
-        val state = ConnectionState.resolve(desiredPlayback, network.isConnected, player.isPlaying,
+        val state = ConnectionState.resolve(desiredPlayback, sourceAvailable, player.isPlaying,
             player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE,
             recovering || player.playerError != null)
         session.setSessionExtras(Bundle().apply {

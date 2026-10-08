@@ -7,6 +7,11 @@ local.properties
 *.keystore
 .kotlin/
 app/src/main/assets/music/*.mp3
+app/src/main/assets/music/**/*.mp3
+*.MP3
+*.RAR
+*.[mM][pP]3
+*.[rR][aA][rR]
 MPB.rar
 *.rar
 *.mp3

@@ -2,6 +2,8 @@
 
 ## Atualização autorizada — etapa 2
 
+Para o ambiente de desenvolvimento, a fonte ativa agora é `LocalAssetMusicProvider`, que localiza MP3 recursivamente em `assets/music` (inclusive `music/MPB/`). A biblioteca é exclusivamente local, não versionada, e a programação funciona sem rede. Jamendo permanece disponível para integração futura. A separação MusicProvider → Programming → Player e MediaSession/MediaLibraryService permanece a mesma.
+
 Para o teste privado/não comercial da etapa 2, a programação é montada localmente a partir de faixas individuais da API de tracks da Jamendo, sem emissora ou endpoint de rádio contínua. Essa instrução substitui, apenas nesta etapa, as referências abaixo ao stream final/programação exclusiva no servidor. O app mantém uma única estação sem gerenciamento de playlists pelo motorista.
 
 A implementação separa MusicProvider, Programming/Queue e Player, usa ProgramItem extensível, buffer/preload/cache operacional e preserva MediaSession/MediaLibraryService. Nenhuma licença atual é presumida suficiente para a futura operação comercial. O motor definitivo, anúncios, vinhetas, jingles, backend e Android Auto completo continuam fora desta etapa. Configuração e roteiro de testes estão no README.
