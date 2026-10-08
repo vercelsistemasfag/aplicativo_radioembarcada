@@ -76,6 +76,10 @@ jobs:
           errors = sum(issue.get('severity') in ('Error', 'Fatal') for issue in issues)
           warnings = sum(issue.get('severity') == 'Warning' for issue in issues)
           assert not errors, 'Lint contém erros'
+          from collections import Counter
+          warning_ids = Counter(issue.get('id') for issue in issues if issue.get('severity') == 'Warning')
+          print('Avisos de lint por categoria: ' + ', '.join(
+              f'{identifier}: {count}' for identifier, count in sorted(warning_ids.items())))
           with zipfile.ZipFile('app/build/outputs/apk/debug/app-debug.apk') as apk:
               music_count = sum(name.lower().endswith('.mp3') for name in apk.namelist())
           summary = (f"Testes: {totals['tests']} aprovados. Lint: {errors} erros, {warnings} avisos. "
