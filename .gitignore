@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+.idea/
+local.properties
+**/build/
+*.jks
+*.keystore
+.kotlin/
+app/src/main/assets/music/*.mp3
+MPB.rar
+*.rar
+*.mp3
+*.apk
+*.aab
+.env
+.env.*

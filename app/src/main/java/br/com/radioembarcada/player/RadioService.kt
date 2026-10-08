@@ -1,0 +1,366 @@
+package br.com.radioembarcada.player
+
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionError
+import br.com.radioembarcada.RadioApplication
+import br.com.radioembarcada.data.music.MusicProviderException
+import br.com.radioembarcada.model.ConnectionState
+import br.com.radioembarcada.network.NetworkMonitor
+import br.com.radioembarcada.programming.ProgrammingConfiguration
+import br.com.radioembarcada.ui.MainActivity
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.MoreExecutors
+import com.google.common.util.concurrent.SettableFuture
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
+@UnstableApi
+class RadioService : MediaLibraryService() {
+    private lateinit var engine: ProgramPlayer
+    private val player get() = engine.player
+    private lateinit var session: MediaLibrarySession
+    private lateinit var network: NetworkMonitor
+    private lateinit var station: MediaItem
+    private val programming get() = (application as RadioApplication).programming
+    private val handler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val playbackIntent = PlaybackIntent()
+    private var desiredPlayback: Boolean
+        get() = playbackIntent.requested
+        set(value) { if (value) playbackIntent.requestPlay() else playbackIntent.pause() }
+    private var suppressResumptionFallback = false
+    private var recovering = false
+    private var message = ""
+    private var retryAttempt = 0
+    private var retryScheduled = false
+    private var catalogBlocked = false
+    private var pendingInitial: SettableFuture<List<MediaItem>>? = null
+    private var initialJob: Job? = null
+    private var refillJob: Job? = null
+    private var terminalErrors = 0
+    private var hasPlayed = false
+    private val retry = Runnable {
+        retryScheduled = false
+        if (desiredPlayback && network.isConnected) {
+            when {
+                player.mediaItemCount == 0 -> resumeWithCatalog()
+                player.playerError != null -> {
+                    // Conservar sequência e posição; nunca resetar por simples perda/troca de rede.
+                    if (terminalErrors >= 3 && player.hasNextMediaItem()) {
+                        player.seekToNextMediaItem()
+                        terminalErrors = 0
+                    }
+                    player.prepare()
+                    player.play()
+                }
+                else -> maybeRefill()
+            }
+        }
+        publishState()
+    }
+    private val poll = object : Runnable {
+        override fun run() {
+            engine.updatePreload(network.isConnected)
+            maybeRefill()
+            publishState()
+            handler.postDelayed(this, PlaybackConfiguration.STATE_POLL_MS)
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val tenant = (application as RadioApplication).tenants.activeTenant
+        station = MediaItem.Builder().setMediaId(tenant.clientId)
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(tenant.radioName).setArtist(tenant.companyName)
+                .setIsBrowsable(false).setIsPlayable(true)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION).build()).build()
+        engine = ProgramPlayer(this)
+        val sessionPlayer = object : ForwardingPlayer(player) {
+            override fun play() {
+                // Media3 1.6 também chama play após falha/cancelamento de onPlaybackResumption.
+                if (suppressResumptionFallback) suppressResumptionFallback = false else startPlayback()
+            }
+            override fun setPlayWhenReady(playWhenReady: Boolean) {
+                if (playWhenReady) startPlayback() else pausePlayback()
+            }
+            override fun pause() { pausePlayback() }
+            override fun stop() { pausePlayback(); player.stop() }
+        }
+        session = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
+            .setSessionActivity(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)).build()
+        network = NetworkMonitor(this, handler) {
+            engine.updatePreload(network.isConnected)
+            if (desiredPlayback && network.isConnected && (player.playerError != null ||
+                    player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED)) scheduleRecovery()
+            publishState()
+        }
+        player.addListener(object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (player.isPlaying) {
+                    hasPlayed = true
+                    recovering = false
+                    terminalErrors = 0
+                } else if (hasPlayed && player.playbackState == Player.STATE_BUFFERING) {
+                    recovering = true
+                }
+                publishState()
+            }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // O ExoPlayer trata foco/noisy internamente. Uma pausa deve cancelar intenção/retries.
+                if (!playWhenReady) {
+                    desiredPlayback = false
+                    cancelRecovery()
+                    engine.updatePreload(network.isConnected)
+                }
+            }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Executar após o lote de eventos do player, sem reentrância na mudança de timeline.
+                handler.post { engine.trimPlayed(); engine.updatePreload(network.isConnected); maybeRefill() }
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                terminalErrors++
+                recovering = true
+                message = "Não foi possível tocar esta faixa. Tentando recuperar a programação."
+                scheduleRecovery()
+            }
+        })
+        network.start()
+        handler.post(poll)
+        publishState()
+    }
+
+    private fun startPlayback() {
+        desiredPlayback = true
+        catalogBlocked = false
+        if (player.mediaItemCount == 0) resumeWithCatalog()
+        else if (player.playbackState == Player.STATE_ENDED) maybeRefill()
+        else {
+            if (player.playbackState == Player.STATE_IDLE) player.prepare()
+            player.play()
+        }
+        publishState()
+    }
+
+    private fun pausePlayback() {
+        desiredPlayback = false
+        pendingInitial?.cancel(false)
+        pendingInitial = null
+        initialJob?.cancel()
+        refillJob?.cancel()
+        cancelRecovery()
+        player.pause()
+        engine.updatePreload(network.isConnected)
+        publishState()
+    }
+
+    private fun initialQueue(): ListenableFuture<List<MediaItem>> {
+        if (engine.mediaItems.isNotEmpty()) return Futures.immediateFuture(engine.mediaItems)
+        pendingInitial?.let { return it }
+        val future = SettableFuture.create<List<MediaItem>>()
+        pendingInitial = future
+        message = ""
+        initialJob = scope.launch {
+            try {
+                val batch = programming.nextBatch()
+                if (!future.isCancelled) {
+                    message = ""
+                    future.set(engine.register(batch))
+                }
+            } catch (_: CancellationException) {
+                future.cancel(false)
+            } catch (error: MusicProviderException) {
+                message = error.userMessage
+                catalogBlocked = !error.retryable
+                recovering = error.retryable
+                if (!error.retryable) desiredPlayback = false
+                future.setException(error)
+                if (error.retryable) scheduleRecovery()
+            } finally {
+                if (pendingInitial === future) pendingInitial = null
+                publishState()
+            }
+        }
+        publishState()
+        return future
+    }
+
+    private fun resumeWithCatalog() {
+        if (catalogBlocked || pendingInitial != null) return
+        val generation = playbackIntent.generation
+        val future = initialQueue()
+        future.addListener({
+            if (desiredPlayback && playbackIntent.isCurrent(generation) && !future.isCancelled) {
+                try {
+                    val media = future.get()
+                    if (player.mediaItemCount == 0) player.setMediaItems(media)
+                    player.prepare()
+                    player.play()
+                } catch (_: Exception) { /* É a mensagem sanitizada já publicada pelo carregamento. */ }
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun maybeRefill() {
+        if (!desiredPlayback || !network.isConnected || catalogBlocked || retryScheduled ||
+            refillJob?.isActive == true || player.mediaItemCount == 0 ||
+            player.mediaItemCount - player.currentMediaItemIndex - 1 > ProgrammingConfiguration.REFILL_REMAINING) return
+        refillJob = scope.launch {
+            try {
+                val batch = programming.nextBatch(engine.items.lastOrNull(), engine.items.map { it.id }.toSet())
+                val ended = player.playbackState == Player.STATE_ENDED
+                engine.append(batch)
+                message = ""
+                if (ended && desiredPlayback && player.hasNextMediaItem()) {
+                    player.seekToNextMediaItem()
+                    player.prepare()
+                    player.play()
+                }
+                engine.updatePreload(network.isConnected)
+            } catch (_: CancellationException) {
+                // Pause preserva a fila/buffer atuais, mas encerra a consulta em andamento.
+            } catch (error: MusicProviderException) {
+                message = error.userMessage
+                catalogBlocked = !error.retryable
+                if (error.retryable) scheduleRecovery()
+            } finally {
+                publishState()
+            }
+        }
+    }
+
+    private fun scheduleRecovery() {
+        if (!desiredPlayback || retryScheduled || catalogBlocked) return
+        recovering = true
+        if (network.isConnected) {
+            retryScheduled = true
+            handler.postDelayed(retry, RetryPolicy.delayMillis(retryAttempt))
+            retryAttempt = (retryAttempt + 1).coerceAtMost(5)
+        }
+        publishState()
+    }
+
+    private fun cancelRecovery() {
+        handler.removeCallbacks(retry)
+        retryScheduled = false
+        retryAttempt = 0
+        recovering = false
+    }
+
+    private fun publishState() {
+        if (!::session.isInitialized || !::network.isInitialized) return
+        val state = ConnectionState.resolve(desiredPlayback, network.isConnected, player.isPlaying,
+            player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE,
+            recovering || player.playerError != null)
+        session.setSessionExtras(Bundle().apply {
+            putString(STATE_KEY, state.name)
+            putBoolean(REQUESTED_KEY, desiredPlayback)
+            putBoolean(CONNECTED_KEY, network.isConnected)
+            putString(MESSAGE_KEY, message)
+            putLong("bufferedDurationMs", player.totalBufferedDuration)
+        })
+    }
+
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
+    override fun onTaskRemoved(rootIntent: Intent?) { if (!desiredPlayback) stopSelf() }
+    override fun onDestroy() {
+        network.stop()
+        handler.removeCallbacksAndMessages(null)
+        pendingInitial?.cancel(false)
+        scope.cancel()
+        session.release()
+        engine.release()
+        super.onDestroy()
+    }
+
+    private inner class LibraryCallback : MediaLibrarySession.Callback {
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo):
+            MediaSession.ConnectionResult = MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS)
+                .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                    .remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
+                    .remove(Player.COMMAND_SET_REPEAT_MODE)
+                    .remove(Player.COMMAND_SET_SHUFFLE_MODE).build())
+                .build()
+        override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo,
+            params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> =
+            Futures.immediateFuture(LibraryResult.ofItem(root(), params))
+        override fun onGetChildren(session: MediaLibrarySession, browser: MediaSession.ControllerInfo,
+            parentId: String, page: Int, pageSize: Int, params: LibraryParams?):
+            ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = Futures.immediateFuture(
+                if (parentId != ROOT_ID) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+                else LibraryResult.ofItemList(if (page == 0) listOf(station) else emptyList(), params))
+        override fun onGetItem(session: MediaLibrarySession, browser: MediaSession.ControllerInfo,
+            mediaId: String): ListenableFuture<LibraryResult<MediaItem>> = Futures.immediateFuture(
+                when (mediaId) {
+                    ROOT_ID -> LibraryResult.ofItem(root(), null)
+                    station.mediaId -> LibraryResult.ofItem(station, null)
+                    else -> engine.mediaItems.find { it.mediaId == mediaId }?.let { LibraryResult.ofItem(it, null) }
+                        ?: LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
+                })
+        override fun onPlaybackResumption(session: MediaSession, controller: MediaSession.ControllerInfo):
+            ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            desiredPlayback = true
+            catalogBlocked = false
+            val future = stationContents()
+            // Registrado antes do callback interno do Media3; marcar o fallback no mesmo thread.
+            future.addListener({
+                try { future.get() } catch (_: Exception) { suppressResumptionFallback = true }
+            }, MoreExecutors.directExecutor())
+            return future
+        }
+        override fun onSetMediaItems(session: MediaSession, controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>, startIndex: Int, startPositionMs: Long):
+            ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            if (mediaItems.size != 1 || mediaItems[0].mediaId != station.mediaId) {
+                return Futures.immediateFailedFuture(IllegalArgumentException("Estação desconhecida"))
+            }
+            return stationContents()
+        }
+        override fun onAddMediaItems(session: MediaSession, controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>): ListenableFuture<List<MediaItem>> =
+            Futures.immediateFailedFuture(UnsupportedOperationException("A programação é automática"))
+        private fun stationContents(): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val generation = playbackIntent.generation
+            return Futures.transform(initialQueue(), { media ->
+                if (!playbackIntent.isCurrent(generation)) throw CancellationException("Pedido de reprodução substituído")
+                MediaSession.MediaItemsWithStartPosition(checkNotNull(media),
+                    player.currentMediaItemIndex.coerceAtLeast(0), player.currentPosition.coerceAtLeast(0))
+            }, ContextCompat.getMainExecutor(this@RadioService))
+        }
+    }
+
+    private fun root(): MediaItem = MediaItem.Builder().setMediaId(ROOT_ID)
+        .setMediaMetadata(MediaMetadata.Builder().setTitle("Rádio Embarcada")
+            .setIsBrowsable(true).setIsPlayable(false)
+            .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_RADIO_STATIONS).build()).build()
+    companion object {
+        const val STATE_KEY = "connectionState"
+        const val REQUESTED_KEY = "playRequested"
+        const val CONNECTED_KEY = "connected"
+        const val MESSAGE_KEY = "message"
+        private const val ROOT_ID = "radio_root"
+    }
+}

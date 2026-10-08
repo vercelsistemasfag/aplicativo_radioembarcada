@@ -1,0 +1,15 @@
+{
+  "headers": {"status": "success", "code": 0},
+  "results": [
+    {"id": "101", "name": "Retro fixture", "artist_name": "Fixture artist", "artist_id": "51", "duration": 185,
+     "image": "https://example.org/cover.jpg", "audio": "https://example.org/track-101.mp3",
+     "license_ccurl": "http://creativecommons.org/licenses/by-nc-sa/3.0/", "audiodownload_allowed": true,
+     "musicinfo": {"tags": {"genres": ["synthpop"], "instruments": ["synthesizer"], "vartags": ["retro"]}}},
+    {"id": "102", "name": "No copy fixture", "artist_name": "Other artist", "artist_id": "52", "duration": 180,
+     "audio": "https://example.org/track-102.mp3", "license_ccurl": "https://creativecommons.org/licenses/by/4.0/",
+     "audiodownload_allowed": false},
+    {"id": "103", "name": "Unknown license fixture", "artist_name": "Other artist", "artist_id": "53", "duration": 180,
+     "audio": "https://example.org/track-103.mp3", "license_ccurl": "https://example.org/unknown-license",
+     "audiodownload_allowed": true}
+  ]
+}
