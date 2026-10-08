@@ -23,14 +23,20 @@ class LocalAssetMusicProvider internal constructor(
     private val catalog: List<Track> by lazy {
         try {
             findMp3Assets(ROOT, listChildren).map { path ->
-                val metadata = readMetadata(path)
+                val metadata = try {
+                    readMetadata(path)
+                } catch (_: IOException) {
+                    LocalTrackMetadata()
+                } catch (_: RuntimeException) {
+                    LocalTrackMetadata()
+                }
                 val filename = path.substringAfterLast('/').dropLast(4)
                 val parts = filename.split(" - ", limit = 2)
                 val artist = metadata.artist?.trim()?.takeIf { it.isNotEmpty() }
                     ?: if (parts.size == 2) parts[0].trim() else ""
                 Track(id = path,
                     title = metadata.title?.trim()?.takeIf { it.isNotEmpty() }
-                        ?: parts.last().trim(),
+                        ?: filename.trim(),
                     artist = artist.ifBlank { "Artista não informado" },
                     // Sem artista conhecido, não presumir que todos os arquivos são do mesmo artista.
                     artistId = artist.lowercase(Locale.ROOT).ifBlank { "unknown:$path" },

@@ -19,3 +19,4 @@ MPB.rar
 *.aab
 .env
 .env.*
+__pycache__/

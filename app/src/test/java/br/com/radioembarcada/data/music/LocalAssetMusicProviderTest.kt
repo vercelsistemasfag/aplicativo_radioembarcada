@@ -38,11 +38,29 @@ class LocalAssetMusicProviderTest {
     @Test fun missingTagsFallBackToFilenameAndUnknownArtistsDoNotCollapseQueue() = runBlocking {
         val source = provider(listOf("music/MPB/Artist - Song.mp3", "music/MPB/other.mp3", "music/MPB/last.mp3"))
         val tracks = source.fetchTracks(20, 0)
-        val named = tracks.first { it.title == "Song" }
+        val named = tracks.first { it.title == "Artist - Song" }
         assertEquals("Artist", named.artist)
         val unknown = tracks.filter { it.artist == "Artista não informado" }
         assertEquals(2, unknown.map { it.artistKey }.distinct().size)
         assertTrue(tracks.all { it.durationMs == 0L })
+    }
+
+    @Test fun invalidMetadataOfOneFileDoesNotDiscardTheOtherTracks() = runBlocking {
+        val source = provider(listOf("music/rock80/bad.mp3", "music/pop/good.mp3")) {
+            if (it.endsWith("bad.mp3")) throw IllegalArgumentException("invalid metadata")
+            LocalTrackMetadata("Good title", "Good artist", 123_000)
+        }
+        val tracks = source.fetchTracks(20, 0)
+        assertEquals(2, tracks.size)
+        assertEquals("bad", tracks.first { it.id.endsWith("bad.mp3") }.title)
+        assertEquals("Good title", tracks.first { it.id.endsWith("good.mp3") }.title)
+    }
+
+    @Test fun unreadableMetadataFallsBackToWholeFilenameIncludingArtistPrefix() = runBlocking {
+        val source = provider(listOf("music/instrumental/Artist - Title.mp3")) {
+            throw IOException("broken tags")
+        }
+        assertEquals("Artist - Title", source.fetchTracks(20, 0).single().title)
     }
 
     @Test fun paginationWrapsWithoutRepeatingIdsInsideThePage() = runBlocking {

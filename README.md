@@ -2,11 +2,11 @@
 
 Rádio Alce com **faixas musicais individuais**. No APK de debug, `LocalAssetMusicProvider` busca MP3 recursivamente em `app/src/main/assets/music`, incluindo `music/MPB/` e outras subpastas. O aplicativo monta a sequência e escolhe a próxima faixa. Jamendo permanece implementado para uso futuro, selecionado na composição de builds não debug. **Não utiliza emissora, endpoint de rádio contínua ou fallback de rádio ao vivo.**
 
-## Biblioteca local de desenvolvimento
+## Desenvolvimento local
 
 Mantenha os MP3 de testes em `app/src/main/assets/music/MPB/` ou qualquer subpasta de `music/`. Nenhum nome de arquivo ou quantidade é fixado no código. Recompile e reinstale após adicionar/remover arquivos: o provider acessa os assets **do APK instalado**, não a pasta do computador em tempo de execução.
 
-O catálogo é lido em `Dispatchers.IO` e mantido em memória durante a sessão. A busca aceita `.mp3` e `.MP3`, ignora outros arquivos e usa o caminho completo como ID estável. Título, artista e duração são lidos das tags pelo MediaMetadataRetriever; sem tags, usa `Artista - Título.mp3` ou o nome do arquivo. Artista ausente é mostrado como “Artista não informado”; cada arquivo sem artista recebe identidade própria para não reduzir toda a fila a uma única faixa. Não se atribui licença Creative Commons nem capa fictícia à biblioteca local.
+O catálogo é lido em `Dispatchers.IO` e mantido em memória durante a sessão. A busca aceita `.mp3` e `.MP3`, ignora outros arquivos e usa o caminho completo como ID estável. Título, artista e duração são lidos das tags pelo MediaMetadataRetriever; sem título válido, usa o nome completo do arquivo sem a extensão. Tags defeituosas não interrompem a construção do catálogo; artista ausente pode ser inferido do padrão `Artista - Título.mp3`. Artista ausente é mostrado como “Artista não informado”; cada arquivo sem artista recebe identidade própria para não reduzir toda a fila a uma única faixa. Não se atribui licença Creative Commons nem capa fictícia à biblioteca local.
 
 A paginação circular alimenta os mesmos lotes de até 20 `ProgramItem(MUSIC)`, com reposição automática e as regras existentes de repetição. A prevenção de artistas consecutivos usa tags/nome quando o artista é conhecido. Assets usam `asset:///music/...` com caracteres escapados, são lidos diretamente pelo DefaultDataSource e não são duplicados no cache HTTP. MP3 são empacotados sem compressão adicional para leitura de metadados/seek. Não há dependências ou permissões novas.
 
@@ -32,13 +32,24 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 No Windows, use `gradlew.bat`. Configure `JAVA_HOME` para o JDK e `ANDROID_HOME` para o SDK, ou `sdk.dir` no `local.properties`.
 
-## APK como artefato
+## GitHub Actions — ambiente oficial de validação e APK
 
-O workflow **Android debug** (`.github/workflows/android-debug.yml`) executa testes, build e lint a cada push em `main` ou por execução manual. Após sucesso, o APK fica disponível em **GitHub → Actions → Android debug → execução → Artifacts → radio-alce-debug**, por sete dias. O APK não entra no histórico Git.
+O workflow existente **Android debug** (`.github/workflows/android-debug.yml`) roda em Ubuntu com **Temurin JDK 17**, Android SDK **Platform 35 / Build Tools 35.0.0**, Gradle Wrapper **8.11.1** validado e cache de Gradle. Não usa o SDK do Codespaces. Executa preparação opcional da biblioteca, testes do preparador, `testDebugUnitTest`, `lintDebug` e `assembleDebug`, nessa ordem. Uma falha impede o upload; o APK é conferido, inclusive sua assinatura, antes de publicar o Artifact.
 
-O build do Actions não recebe credenciais da Jamendo nem a biblioteca local ignorada: o APK abre, mas Play informa biblioteca vazia. Para reproduzir as músicas locais, gere `app/build/outputs/apk/debug/app-debug.apk` no ambiente que contém os MP3.
+A cada push em `main`, ou em **GitHub → Actions → Android debug → Run workflow → main**, o resultado bem-sucedido disponibiliza **Artifacts → radio-embarcada-debug-apk**, contendo **app-debug.apk**, por sete dias. O caminho de build é `app/build/outputs/apk/debug/app-debug.apk`. O APK não é versionado.
 
-MP3 de testes, incluindo `app/src/main/assets/music/*.mp3`, e arquivos RAR, incluindo `MPB.rar`, são ignorados pelo Git e permanecem apenas no ambiente local. Não são enviados ao GitHub nem ficam disponíveis no runner do Actions. Configurações locais, caches, assinaturas privadas e saídas de build também são ignorados.
+### Biblioteca privada opcional no Actions
+
+1. Disponibilize um arquivo **RAR (RAR4/RAR5) ou ZIP sem senha** em um link HTTPS de download direto acessível pelo runner. Subpastas são preservadas; somente MP3 são copiados para os assets.
+2. No repositório, abra **Settings → Secrets and variables → Actions → New repository secret**.
+3. Use o nome **MUSIC_ARCHIVE_URL** e coloque o link como valor. Não coloque o link no YAML, README ou código. Um link assinado precisa continuar válido durante o download.
+4. Execute **Run workflow**. A biblioteca é baixada em diretório temporário, extraída e copiada para `app/src/main/assets/music/` antes dos testes/build. O runner instala `unrar` automaticamente quando necessário; ZIP usa a biblioteca padrão Python.
+
+**Sem o secret**, aparece no log uma mensagem de biblioteca opcional ausente e o APK é gerado normalmente, sem músicas. Ele abre e informa biblioteca vazia ao pressionar Play, sem emissora externa ou fallback para Jamendo. **Com o secret**, o APK contém as músicas e funciona sem internet após instalado. URL inválida, download/extração com erro ou arquivo configurado sem MP3 falham claramente, sem divulgar a URL. A URL não aparece em comandos ou mensagens de erro, e secrets são mascarados pelo Actions.
+
+O preparador também aceita uma variável de Actions com esse nome, consultada pela API sem interpolar o valor no log. Isso depende de permissão de leitura de variáveis pelo token do runner; **prefira o secret**, que não exige essa consulta e tem precedência. Nenhum token adicional é necessário para o modo recomendado.
+
+MP3 recursivos, `MPB.rar`, outros RAR, APKs, configurações locais e caches continuam ignorados pelo Git. A injeção não faz commit nem push de músicas. Arquivos existentes no ambiente local não são apagados nem sobrescritos. O Artifact com biblioteca contém as músicas privadas: distribua somente para os testes autorizados; isso não presume direitos comerciais futuros.
 
 ## Configurar a Jamendo para uso futuro
 
@@ -135,7 +146,7 @@ Wi-Fi/dados móveis usam a rede padrão do Android. A mesma instância ExoPlayer
 
 O manifest mantém `INTERNET`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `FOREGROUND_SERVICE` e `FOREGROUND_SERVICE_MEDIA_PLAYBACK`. MediaLibraryService segue com `foregroundServiceType=mediaPlayback` e ações MediaLibraryService/MediaBrowserService. AndroidX adiciona sua permissão interna de assinatura para receptores dinâmicos. Não há novas permissões de usuário. A notificação é a padrão Media3 ligada à MediaSession. O serviço exportado resolve apenas a estação conhecida, sem aceitar URLs externas nem gerenciamento externo da fila. Raiz/estação e metadados da música atual preservam a base Android Auto, sem integração automotiva completa nesta etapa.
 
-## Teste manual
+## Teste manual de streaming Jamendo (futuro)
 
 1. Configure um client_id válido, recompile/reinstale e abra Rádio Alce. Toque Play: deve consultar o catálogo, carregar áudio e mostrar título/artista/capa/duração.
 2. Aguarde a rede abastecer o buffer. Com uma conexão suficientemente rápida, deixe tocar por **30–60 segundos** antes de desligar a internet; desligar imediatamente após Play não mede o buffer estabilizado.
@@ -155,49 +166,15 @@ Mantidas Kotlin/Compose Compiler 2.1.20, Compose BOM 2025.04.01/Material 3, Acti
 
 ## Validação da entrega
 
-### Provider local — 0.3.0
+O workflow é a fonte oficial dos resultados: consulte os passos e o resumo da execução no Actions. O resumo informa quantidade de testes Android, erros/avisos de lint e MP3 realmente presentes no APK. Os testes não dependem da biblioteca privada de 77 músicas.
 
-**36 testes aprovados**, incluindo oito testes novos para busca recursiva, tags/fallback, URI com espaços/acentos/caracteres especiais, paginação circular de 77 faixas simuladas, biblioteca vazia/ilegível, estado sem rede e reposição automática por vários lotes. `testDebugUnitTest`, `assembleDebug` e `lintDebug` executados com sucesso; lint mantém 0 erros e 10 avisos conhecidos. Não foram adicionadas dependências nem alteradas as permissões/declaração do serviço.
-
-Nesta execução, `app/src/main/assets/music/MPB/` e seus 77 MP3 não estavam presentes no checkout nem nos diretórios compartilhados consultados. Portanto, os testes usam uma árvore de assets simulada sem arquivos musicais, e o APK gerado aqui não contém essa biblioteca. O teste audível com a biblioteca real precisa ser realizado no ambiente que possui os arquivos. Nenhum MP3/RAR foi criado, removido ou versionado.
-
-### Correção de inicialização — 0.2.1
-
-Corrigido o fechamento ao abrir causado por `IllegalStateException: getBackBufferDurationUs not implemented` na construção do ExoPlayer. A delegação Kotlin `LoadControl by delegate` não encaminha os métodos `default` da interface Java. `RadioLoadControl` agora encaminha explicitamente os métodos atuais de ciclo de vida, seleção de faixas, back buffer, início e preload ao DefaultLoadControl, preservando a configuração de buffer.
-
-`RadioLoadControlTest` cobre construção/back buffer, preparação/liberação e seleção/início com buffer pequeno. Os três testes falham na implementação anterior e passam com a correção. Nenhuma dependência ou permissão foi acrescentada. A versão do APK é 0.2.1 (`versionCode=2`).
-
-Validação da correção: **28 testes aprovados**, `assembleDebug` e `lintDebug` com **BUILD SUCCESSFUL**, lint com os mesmos **0 erros/10 avisos** e assinatura do APK verificada. APK: `app/build/outputs/apk/debug/radio-alce-0.2.1-debug.apk`.
-
-A tentativa de validação no emulador Android 15 sem aceleração foi inconclusiva: o próprio sistema sofreu watchdog/reinicialização e `DeadSystemException` antes da execução do aplicativo. A abertura precisa ser confirmada no aparelho ou em um emulador com aceleração; não foi apresentada como teste de runtime aprovado.
-
-Para investigar um fechamento em um dispositivo específico, conecte-o com depuração USB, limpe o Logcat, abra o app e capture o buffer de crash:
+A suíte atual contém **41 testes JVM** (provider/recursão/subpastas/metadados/fallback/biblioteca vazia, fila/repetição/ProgramItem, conversão Jamendo, estados, buffer e política de erros) e **8 testes Python** do preparador (biblioteca opcional, ZIP, RAR4/RAR5 com mocks, caminhos inválidos, credencial sanitizada e preservação local). Para repetir a validação:
 
 ```sh
-adb logcat -c
-adb shell am start -n br.com.radioembarcada/.ui.MainActivity
-adb logcat -b crash -d
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
+./gradlew testDebugUnitTest lintDebug assembleDebug --warning-mode all --max-workers=2
 ```
 
-Não compartilhe credenciais ou URLs autenticadas eventualmente presentes em logs de terceiros.
+Os avisos de lint existentes são revisados e permanecem visíveis: sugestões de atualização de dependências, serviço exportado para controladores e configuração HTTP herdada. Não se suprimem erros para liberar o build. Os relatórios locais ficam em `app/build/reports/`. MediaSession/MediaLibraryService, foco de áudio, metadados e arquitetura multi-tenant foram preservados; testes de áudio, chamadas e Android Auto precisam de dispositivo.
 
-Build executado com JDK 17/SDK 35: **BUILD SUCCESSFUL**. **28 testes aprovados**, sem falhas ou erros. Além dos testes anteriores, há cobertura de fila/ProgramItem, fronteiras de artista/faixa, conversão/licenças do provedor, parâmetros de tags, ausência de client_id, estados com buffer offline, histerese/configuração de buffer, ciclo de vida do LoadControl e invalidação de consultas pendentes após Pause/novo Play.
-
-A retomada assíncrona também tem uma proteção específica para o comportamento do Media3 1.6.1, que chama Play após falha/cancelamento de `onPlaybackResumption`. Resultados substituídos são invalidados, e esse Play de fallback é ignorado. Não há emissora alternativa quando o catálogo falha.
-
-Lint: **0 erros e 10 avisos revisados**, mantidos visíveis: oito sugestões de atualização de dependências fixadas no conjunto SDK 35/Media3 1.6.1; serviço exportado para controladores de mídia; configuração HTTP herdada da etapa 1 (a integração Jamendo aceita somente HTTPS). Nenhum erro de compilação ou lint foi suprimido. Relatórios: `app/build/reports/`.
-
-Manifest mesclado, ações/tipo do serviço, Audio Focus, MediaSession e comandos da biblioteca foram conferidos. A busca de padrões e inspeção dos arquivos destinados ao Git, incluindo documentos do ZIP inicial, não encontrou credenciais. Configuração local e fontes geradas permanecem ignoradas.
-
-**Não havia client_id nem dispositivo/emulador Android disponível nesta execução.** Portanto, consultas autenticadas, seleção/sonoridade real, tolerância offline medida, notificação audível, chamadas e transições Wi-Fi/dados ainda dependem do roteiro manual com sua configuração. As estruturas de segundo plano/Auto da primeira etapa foram preservadas; a validação em dispositivo deve ser repetida para esta nova fonte de conteúdo.
-
-## Arquivos da etapa 2
-
-- Novos modelos: `model/Track.kt`, `model/ProgramItem.kt`, `model/NowPlaying.kt`.
-- Novo contrato/adaptador: `data/music/MusicProvider.kt` e `network/jamendo/{JamendoConfiguration,JamendoMusicProvider,JamendoResponseParser,JamendoTrackDto,JamendoTrackMapper}.kt`.
-- Nova programação: `programming/{ProgrammingConfiguration,QueueBuilder,AutomaticProgramming}.kt`.
-- Nova infraestrutura de reprodução: `player/{ProgramPlayer,PlaybackConfiguration,RadioLoadControl,RadioLoadErrorPolicy,PlaybackIntent}.kt`.
-- Alterados: `RadioApplication.kt`, `model/{Tenant,ConnectionState}.kt`, `storage/LocalTenantStore.kt`, `player/{RadioService,RadioController}.kt`, `ui/{MainActivity,RadioViewModel}.kt`, `assets/tenant.json`, `app/build.gradle.kts`, `README.md` e `docs/MVP.md`.
-- Novos testes/fixture: `QueueBuilderTest`, `JamendoResponseTest`, `JamendoConfigurationTest`, `PlaybackConfigurationTest`, `PlaybackIntentTest` e `jamendo-tracks.json`; atualizado `ConnectionStateTest`. Mantido `RetryPolicyTest`.
-
-Caminhos Kotlin relativos a `app/src/main/java/br/com/radioembarcada/`; testes em `app/src/test/`.
+Arquivos locais inexistentes/inacessíveis e formatos defeituosos têm recuperação limitada, em vez de retry infinito; falhas transitórias de rede mantêm o backoff e o áudio preparado. O player/sessão não são recriados entre faixas. O encaminhamento explícito de métodos do LoadControl, que corrige o fechamento da versão anterior ao abrir, continua coberto pelos testes.
