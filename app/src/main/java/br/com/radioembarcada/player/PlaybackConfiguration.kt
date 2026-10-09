@@ -22,6 +22,10 @@ object PlaybackConfiguration {
     const val CONNECT_TIMEOUT_MS = 10_000
     const val READ_TIMEOUT_MS = 10_000
 
+    /** Peças curtas/fim de música não atingem 30 s: conservar a preparação da próxima. */
+    fun canPreload(localSource: Boolean, bufferedMs: Long, remainingMs: Long): Boolean =
+        localSource || bufferedMs >= MIN_BUFFER_MS || remainingMs in 0..MIN_BUFFER_MS.toLong()
+
     fun shouldFill(bufferedMs: Long, filling: Boolean): Boolean = when {
         bufferedMs >= DESIRED_BUFFER_MS -> false
         bufferedMs < STEADY_LOW_WATER_MS -> true

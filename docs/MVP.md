@@ -8,7 +8,13 @@ O último catálogo válido é salvo privadamente, com fallback em falhas/offlin
 
 LocalAssetMusicProvider permanece opt-in para desenvolvimento, Jamendo preservado e inativo. O APK padrão exclui music/** sem apagar músicas locais. O workflow existente não usa MUSIC_ARCHIVE_URL nem baixa MPB.rar; valida testes, lint, build e zero MP3 no APK antes do Artifact. Configuração e roteiro de validação estão no README.
 
-Nenhuma licença do MVP é presumida suficiente para operação comercial. Vinhetas/jingles, publicidade, autenticação musical, backend definitivo e Android Auto completo continuam fora desta etapa.
+Nenhuma licença do MVP é presumida suficiente para operação comercial. Publicidade, autenticação musical, backend definitivo e Android Auto completo continuam fora desta etapa.
+
+## Atualização autorizada — programação remota da estação
+
+RemoteProgrammingProvider carrega programming.json do R2, separado do MusicProvider. AutomaticProgramming/ProgrammingSequencer usam songsBetweenInsertions e alternateStationIdAndJingle do JSON para inserir STATION_ID/JINGLE somente entre músicas, mantendo contador/alternância entre lotes. O JSON publicado de alce, versão 1, tem intervalo 3 e um item de cada tipo; esses valores não são fixados no motor.
+
+A última configuração válida é salva privadamente; falhas usam a versão salva ou deixam a rádio tocando somente músicas, com refresh/retry controlados. IDs de ocorrência distintos permitem repetir peças na fila com cache compartilhado por conteúdo. Media3, preload da próxima peça/música, sessão contínua e controles externos somente Play/Pause permanecem. O APK padrão não contém MP3 e o workflow existente continua gerando o Artifact. Não há novas telas nem regras comerciais de anúncios.
 
 
 ## Visão

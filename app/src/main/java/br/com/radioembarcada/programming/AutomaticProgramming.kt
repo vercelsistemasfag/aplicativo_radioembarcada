@@ -2,19 +2,39 @@ package br.com.radioembarcada.programming
 
 import br.com.radioembarcada.data.music.MusicProvider
 import br.com.radioembarcada.data.music.MusicProviderException
+import br.com.radioembarcada.data.programming.ProgrammingProvider
 import br.com.radioembarcada.model.ProgramItem
+import br.com.radioembarcada.model.ProgramItemType
 import br.com.radioembarcada.model.Track
+import kotlinx.coroutines.CancellationException
 
 class AutomaticProgramming(private val provider: MusicProvider,
-    private val queueBuilder: QueueBuilder = QueueBuilder()) {
+    private val queueBuilder: QueueBuilder = QueueBuilder(),
+    private val programmingProvider: ProgrammingProvider? = null,
+    private val diagnostic: (String) -> Unit = {}) {
+    private val sequencer = ProgrammingSequencer(diagnostic)
+    private var lastMusic: ProgramItem? = null
     private var completeCatalog: List<Track>? = null
     private val remaining = mutableListOf<Track>()
     private var revision: Long? = null
     private var page = 0
     private val recentlyScheduled = ArrayDeque<String>()
 
+    fun startSession() = sequencer.startSession()
+
     suspend fun nextBatch(previous: ProgramItem? = null, queuedIds: Set<String> = emptySet(),
         excludedIds: Set<String> = emptySet(), prefer: (ProgramItem) -> Boolean = { false }): List<ProgramItem> {
+        val configuration = try { programmingProvider?.load() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { diagnostic("Falha de carregamento da programação; continuando com músicas."); null }
+        val musicPrevious = previous?.takeIf { it.type == ProgramItemType.MUSIC } ?: lastMusic
+        val music = nextMusicBatch(musicPrevious, queuedIds, excludedIds, prefer)
+        lastMusic = music.lastOrNull() ?: lastMusic
+        return sequencer.interleave(music, configuration)
+    }
+
+    private suspend fun nextMusicBatch(previous: ProgramItem?, queuedIds: Set<String>,
+        excludedIds: Set<String>, prefer: (ProgramItem) -> Boolean): List<ProgramItem> {
         if (provider.providesCompleteCatalog) return nextCompleteBatch(previous, queuedIds, excludedIds, prefer)
         val catalog = provider.fetchTracks(ProgrammingConfiguration.CATALOG_LIMIT_PER_QUERY,
             page * ProgrammingConfiguration.CATALOG_LIMIT_PER_QUERY)

@@ -101,6 +101,7 @@ class RadioService : MediaLibraryService() {
             .setMediaMetadata(MediaMetadata.Builder().setTitle(tenant.radioName).setArtist(tenant.companyName)
                 .setIsBrowsable(false).setIsPlayable(true)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION).build()).build()
+        programming.startSession()
         engine = ProgramPlayer(this, localSource)
         val sessionPlayer = object : ForwardingPlayer(player) {
             override fun play() {
@@ -145,7 +146,7 @@ class RadioService : MediaLibraryService() {
                 // Executar após o lote de eventos do player, sem reentrância na mudança de timeline.
                 handler.post {
                     engine.trimPlayed(); engine.updatePreload(sourceAvailable); maybeRefill()
-                    if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", "Provider=${(application as RadioApplication).musicProvider.javaClass.simpleName}; atual=${player.currentMediaItem?.mediaId}; próxima=${engine.items.getOrNull(player.currentMediaItemIndex + 1)?.id}")
+                    if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", "Provider=${(application as RadioApplication).musicProvider.javaClass.simpleName}; atual=${player.currentMediaItem?.mediaId}; próximo ProgramItem=${engine.items.getOrNull(player.currentMediaItemIndex + 1)?.let { "${it.type}:${it.id}" }}")
                 }
             }
             override fun onPlayerError(error: PlaybackException) {

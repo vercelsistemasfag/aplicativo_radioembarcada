@@ -16,6 +16,7 @@ data class ProgramItem(
     val source: String = "",
     val sourceUrl: String = "",
     val artworkData: ByteArray? = null,
+    val contentId: String = id,
 ) {
     companion object {
         fun music(track: Track) = ProgramItem(

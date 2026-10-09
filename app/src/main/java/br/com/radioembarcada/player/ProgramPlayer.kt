@@ -111,7 +111,8 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false) 
     fun updatePreload(sourceAvailable: Boolean) {
         val ranking = baseRanking + player.currentMediaItemIndex.coerceAtLeast(0)
         val enabled = sourceAvailable && player.playWhenReady && player.isPlaying &&
-            (localSource || player.totalBufferedDuration >= PlaybackConfiguration.MIN_BUFFER_MS)
+            PlaybackConfiguration.canPreload(localSource, player.totalBufferedDuration,
+                if (player.duration == C.TIME_UNSET) C.TIME_UNSET else player.duration - player.currentPosition)
         if (ranking != currentRanking || enabled != preloadEnabled) {
             currentRanking = ranking
             preloadEnabled = enabled
@@ -159,10 +160,11 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false) 
                 putString("source", item.source)
                 putString("sourceUrl", item.sourceUrl)
                 putString("programType", item.type.name)
+                putString("contentId", item.contentId)
             }).build()).build()
 }
 
 /** URL alterada com o mesmo ID deve usar outro conteúdo no cache, sem expor URLs em chaves. */
-internal fun audioCacheKey(item: ProgramItem): String = item.id + ":" +
+internal fun audioCacheKey(item: ProgramItem): String = item.contentId + ":" +
     java.security.MessageDigest.getInstance("SHA-256").digest(item.audioUrl.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }

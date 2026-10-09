@@ -23,6 +23,8 @@ import androidx.media3.test.utils.FakeTimeline
 import androidx.media3.test.utils.robolectric.RobolectricUtil.runMainLooperUntil
 import androidx.media3.test.utils.robolectric.TestPlayerRunHelper.advance
 import br.com.radioembarcada.data.music.MusicProvider
+import br.com.radioembarcada.data.programming.ProgrammingProvider
+import br.com.radioembarcada.network.programming.RemoteProgrammingParser
 import br.com.radioembarcada.model.ProgramItem
 import br.com.radioembarcada.model.ProgramItemType
 import br.com.radioembarcada.model.Track
@@ -201,15 +203,17 @@ class RadioSessionCallbackTest {
     @Test fun naturalEndContinuesThroughMusicStationIdAndJingleWithoutExternalSeek() = runBlocking {
         val provider = object : MusicProvider {
             override val providesCompleteCatalog = true
-            override suspend fun fetchTracks(limit: Int, offset: Int) = (1..3).map {
+            override suspend fun fetchTracks(limit: Int, offset: Int) = (1..9).map {
                 Track("$it", "Music $it", "Artist $it", "$it", null,
                     "https://example.invalid/$it", 1_000, "", "Fixture", "")
             }
         }
-        val programming = AutomaticProgramming(provider)
-        val batch = programming.nextBatch()
-        val program = listOf(batch[0], item("station-id", ProgramItemType.STATION_ID),
-            item("jingle", ProgramItemType.JINGLE)) + batch.drop(1)
+        val programming = AutomaticProgramming(provider, programmingProvider = ProgrammingProvider {
+            RemoteProgrammingParser.parse(checkNotNull(javaClass.getResource("/programming.json")).readText())
+        })
+        val program = programming.nextBatch()
+        assertEquals(listOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE, ProgramItemType.STATION_ID),
+            program.filter { it.type != ProgramItemType.MUSIC }.map { it.type })
         player.setMediaSources(program.map(::source))
         val transitions = mutableListOf<Pair<String?, Int>>()
         player.addListener(object : Player.Listener {

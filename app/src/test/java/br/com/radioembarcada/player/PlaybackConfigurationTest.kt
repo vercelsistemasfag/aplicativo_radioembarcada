@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackConfigurationTest {
+    @Test fun shortPiecesAndMusicEndsKeepTheNextItemPreparedWithoutWaitingForThirtySeconds() {
+        assertTrue(PlaybackConfiguration.canPreload(false, 2_000, 4_000))
+        assertTrue(PlaybackConfiguration.canPreload(false, 8_000, 20_000))
+        assertTrue(PlaybackConfiguration.canPreload(false, 30_000, 180_000))
+        assertFalse(PlaybackConfiguration.canPreload(false, 2_000, 180_000))
+        assertFalse(PlaybackConfiguration.canPreload(false, 2_000, -1))
+        assertTrue(PlaybackConfiguration.canPreload(true, 250, 180_000))
+    }
     @Test fun startIsQuickAndBufferLimitsRemainCoherent() {
         assertTrue(PlaybackConfiguration.START_BUFFER_MS in 500..2_500)
         assertEquals(30_000, PlaybackConfiguration.MIN_BUFFER_MS)

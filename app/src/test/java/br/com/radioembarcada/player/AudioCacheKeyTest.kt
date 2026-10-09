@@ -12,4 +12,13 @@ class AudioCacheKeyTest {
         assertEquals(audioCacheKey(item), audioCacheKey(item.copy(title = "Updated title")))
         assertFalse(audioCacheKey(item).contains("https://"))
     }
+
+    @Test fun repeatedInsertionOccurrencesReuseAudioCacheButHaveDifferentQueueIds() {
+        val piece = ProgramItem("station", ProgramItemType.STATION_ID, "Rádio", "https://example.org/id.mp3", 4_000)
+        val first = piece.copy(id = "station:occurrence:1")
+        val second = piece.copy(id = "station:occurrence:2")
+        assertNotEquals(first.id, second.id)
+        assertEquals(audioCacheKey(first), audioCacheKey(second))
+        assertNotEquals(audioCacheKey(first), audioCacheKey(second.copy(audioUrl = "https://example.org/new.mp3")))
+    }
 }

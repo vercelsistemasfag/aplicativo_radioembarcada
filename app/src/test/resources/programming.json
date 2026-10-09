@@ -1,0 +1,7 @@
+{
+  "stationId": "alce",
+  "version": 1,
+  "rules": {"songsBetweenInsertions": 3, "alternateStationIdAndJingle": true},
+  "stationIds": [{"id": "station-01", "type": "STATION_ID", "title": "Rádio Alce", "url": "https://example.org/station.mp3"}],
+  "jingles": [{"id": "jingle-01", "type": "JINGLE", "title": "Alce", "url": "https://example.org/jingle.mp3"}]
+}
