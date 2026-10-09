@@ -32,39 +32,32 @@ class RemoteProgrammingQueueTest {
         }
     }
 
-    @Test fun threeSongsThenStationIdThenThreeSongsThenJingleAndAlternationAcrossBatches() = runBlocking {
+    @Test fun eachChangeHasOnePieceAndPatternSurvivesBatchBoundaries() = runBlocking {
         val engine = AutomaticProgramming(musicProvider(), QueueBuilder(Random(1)), ProgrammingProvider { configuration() })
         val first = engine.nextBatch()
         val second = engine.nextBatch(first.last(), first.takeLast(4).map { it.id }.toSet())
         val all = first + second
-        assertEquals(listOf(ProgramItemType.MUSIC, ProgramItemType.MUSIC, ProgramItemType.MUSIC,
-            ProgramItemType.STATION_ID, ProgramItemType.MUSIC, ProgramItemType.MUSIC, ProgramItemType.MUSIC,
-            ProgramItemType.JINGLE, ProgramItemType.MUSIC, ProgramItemType.MUSIC, ProgramItemType.MUSIC,
-            ProgramItemType.STATION_ID), all.take(12).map { it.type })
-        val insertions = all.filter { it.type != ProgramItemType.MUSIC }
-        assertTrue(insertions.zipWithNext().all { (a, b) -> a.type != b.type })
-        assertTrue(all.chunked(4).dropLast(1).all { it.take(3).all { i -> i.type == ProgramItemType.MUSIC } })
-        assertEquals(40, all.count { it.type == ProgramItemType.MUSIC })
+        val pattern = listOf(ProgramItemType.STATION_ID, ProgramItemType.STATION_ID, ProgramItemType.JINGLE)
+        assertEquals(80, all.size)
+        all.chunked(2).forEachIndexed { i, pair ->
+            assertEquals(ProgramItemType.MUSIC, pair[0].type)
+            assertEquals(pattern[i % 3], pair[1].type)
+        }
         assertEquals(all.size, all.map { it.id }.distinct().size)
-        assertEquals(2, insertions.map { it.contentId }.distinct().size)
+        assertNoConsecutivePieces(all)
     }
 
-    @Test fun jsonIntervalIsUsedInsteadOfAHardcodedThreeAndCanChangeBetweenBatches() = runBlocking {
-        var config = configuration(interval = 5)
-        val engine = AutomaticProgramming(musicProvider(), programmingProvider = ProgrammingProvider { config })
-        val first = engine.nextBatch()
-        assertEquals(5, first.indexOfFirst { it.type != ProgramItemType.MUSIC })
-        assertEquals(4, first.count { it.type != ProgramItemType.MUSIC })
-        config = configuration(interval = 2).copy(version = 2)
-        val second = engine.nextBatch(first.last(), first.takeLast(3).map { it.id }.toSet())
-        assertEquals(2, second.indexOfFirst { it.type != ProgramItemType.MUSIC })
-        assertEquals(10, second.count { it.type != ProgramItemType.MUSIC })
+    @Test fun legacySongsBetweenInsertionsNeverLeavesThreeSongsWithoutPieces() = runBlocking {
+        val engine = AutomaticProgramming(musicProvider(), programmingProvider = ProgrammingProvider { configuration(interval = 5) })
+        val items = engine.nextBatch()
+        assertEquals(20, items.count { it.type != ProgramItemType.MUSIC })
+        assertEquals(1, items.indexOfFirst { it.type != ProgramItemType.MUSIC })
     }
 
     @Test fun noStationIdsStillAllowsJinglesSeparatedByMusic() = runBlocking {
         val engine = AutomaticProgramming(musicProvider(), programmingProvider = ProgrammingProvider { configuration(stationIds = false) })
         val batch = engine.nextBatch()
-        assertEquals(6, batch.count { it.type == ProgramItemType.JINGLE })
+        assertEquals(20, batch.count { it.type == ProgramItemType.JINGLE })
         assertTrue(batch.none { it.type == ProgramItemType.STATION_ID })
         assertNoConsecutivePieces(batch)
     }
@@ -72,7 +65,7 @@ class RemoteProgrammingQueueTest {
     @Test fun noJinglesStillAllowsStationIdsSeparatedByMusic() = runBlocking {
         val engine = AutomaticProgramming(musicProvider(), programmingProvider = ProgrammingProvider { configuration(jingles = false) })
         val batch = engine.nextBatch()
-        assertEquals(6, batch.count { it.type == ProgramItemType.STATION_ID })
+        assertEquals(20, batch.count { it.type == ProgramItemType.STATION_ID })
         assertTrue(batch.none { it.type == ProgramItemType.JINGLE })
         assertNoConsecutivePieces(batch)
     }
@@ -131,7 +124,7 @@ class RemoteProgrammingQueueTest {
         val engine = AutomaticProgramming(musicProvider(), programmingProvider = ProgrammingProvider { configuration() },
             diagnostic = logs::add)
         engine.nextBatch()
-        listOf("música 1/3", "música 2/3", "música 3/3", "Inserção selecionada: STATION_ID",
+        listOf("troca 1/3", "troca 2/3", "troca 3/3", "Inserção selecionada: STATION_ID",
             "Inserção selecionada: JINGLE").forEach { expected -> assertTrue(logs.any { expected in it }) }
     }
 
@@ -140,8 +133,8 @@ class RemoteProgrammingQueueTest {
         engine.nextBatch() // 20 músicas agendadas: o lote termina com contagem 2/3.
         engine.startSession() // Serviço anterior liberado; a fila será construída novamente.
         val restarted = engine.nextBatch()
-        assertEquals(3, restarted.indexOfFirst { it.type != ProgramItemType.MUSIC })
-        assertEquals(ProgramItemType.STATION_ID, restarted[3].type)
+        assertEquals(1, restarted.indexOfFirst { it.type != ProgramItemType.MUSIC })
+        assertEquals(ProgramItemType.STATION_ID, restarted[1].type)
     }
 
     private fun assertNoConsecutivePieces(items: List<ProgramItem>) {

@@ -12,9 +12,11 @@ Nenhuma licença do MVP é presumida suficiente para operação comercial. Publi
 
 ## Atualização autorizada — programação remota da estação
 
-RemoteProgrammingProvider carrega programming.json do R2, separado do MusicProvider. AutomaticProgramming/ProgrammingSequencer usam songsBetweenInsertions e alternateStationIdAndJingle do JSON para inserir STATION_ID/JINGLE somente entre músicas, mantendo contador/alternância entre lotes. O JSON publicado de alce, versão 1, tem intervalo 3 e um item de cada tipo; esses valores não são fixados no motor.
+RemoteProgrammingProvider carrega programming.json do R2, separado do MusicProvider. A programação publicada versão 3 contém quatro STATION_ID e três JINGLE. A correção autorizada é **uma peça em toda mudança de música**, em ciclo STATION_ID → STATION_ID → JINGLE. O jingle substitui a vinheta na terceira troca. ProgrammingRules centraliza o padrão, ProgrammingSequencer mantém posição entre lotes e bags independentes sem repetição imediata. O campo legado songsBetweenInsertions não espaça músicas nesta fase.
 
-A última configuração válida é salva privadamente; falhas usam a versão salva ou deixam a rádio tocando somente músicas, com refresh/retry controlados. IDs de ocorrência distintos permitem repetir peças na fila com cache compartilhado por conteúdo. Media3, preload da próxima peça/música, sessão contínua e controles externos somente Play/Pause permanecem. O APK padrão não contém MP3 e o workflow existente continua gerando o Artifact. Não há novas telas nem regras comerciais de anúncios.
+TransitionPolicy/AudioTransitionController aplicam saída de MUSIC nos últimos 15 s, entrada curta de peça (300 ms) e de música (100 ms). Peças tocam integralmente, sem crossfade/overlap; avanço natural na mesma instância ExoPlayer. Ganhos centralizados e preload da peça/próxima música usam o pipeline/cache existente. Pause preserva posição e programação.
+
+A última configuração válida é salva privadamente; falhas usam a versão salva ou deixam a rádio tocando somente músicas, com refresh/retry controlados. IDs de ocorrência distintos permitem repetir peças na fila com cache compartilhado por conteúdo. Media3, sessão contínua e controles externos somente Play/Pause permanecem. O APK padrão não contém MP3 e o workflow existente continua gerando o Artifact. Não há novas telas nem regras comerciais de anúncios.
 
 
 ## Visão

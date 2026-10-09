@@ -41,7 +41,7 @@ class ProgramPlayerProgrammingTest {
             engine.player.setMediaItems(media)
             assertEquals(batch.map { it.id }, media.map { it.mediaId })
             val ids = media.filter { it.mediaMetadata.extras?.getString("programType") == ProgramItemType.STATION_ID.name }
-            assertEquals(3, ids.size)
+            assertEquals(14, ids.size)
             assertEquals(ids.size, ids.map { it.mediaId }.distinct().size)
             assertEquals(1, ids.map { it.localConfiguration?.customCacheKey }.distinct().size)
             assertTrue(ids.all { it.mediaMetadata.title == "Rádio Alce" &&

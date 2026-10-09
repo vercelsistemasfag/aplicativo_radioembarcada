@@ -1,0 +1,57 @@
+{
+  "stationId": "alce",
+  "version": 3,
+  "rules": {
+    "songsBetweenInsertions": 3,
+    "alternateInsertionTypes": true,
+    "neverCombineInsertions": true,
+    "jingleSelection": "SHUFFLE_BAG",
+    "stationIdSelection": "SHUFFLE_BAG"
+  },
+  "stationIds": [
+    {
+      "id": "vinheta-alce-1",
+      "type": "STATION_ID",
+      "title": "Vinheta Alce 1",
+      "url": "https://example.org/stationIds-0.mp3"
+    },
+    {
+      "id": "vinheta-alce-2",
+      "type": "STATION_ID",
+      "title": "Vinheta Alce 2",
+      "url": "https://example.org/stationIds-1.mp3"
+    },
+    {
+      "id": "vinheta-alce-3",
+      "type": "STATION_ID",
+      "title": "Vinheta Alce 3",
+      "url": "https://example.org/stationIds-2.mp3"
+    },
+    {
+      "id": "vinheta-alce-4",
+      "type": "STATION_ID",
+      "title": "Vinheta Alce 4",
+      "url": "https://example.org/stationIds-3.mp3"
+    }
+  ],
+  "jingles": [
+    {
+      "id": "jingle-mobilidade-simples",
+      "type": "JINGLE",
+      "title": "Mobilidade Simples",
+      "url": "https://example.org/jingles-0.mp3"
+    },
+    {
+      "id": "jingle-tarifa-fixa",
+      "type": "JINGLE",
+      "title": "Tarifa Fixa no Alce",
+      "url": "https://example.org/jingles-1.mp3"
+    },
+    {
+      "id": "jingle-alce",
+      "type": "JINGLE",
+      "title": "Alce App Transporte",
+      "url": "https://example.org/jingles-2.mp3"
+    }
+  ]
+}

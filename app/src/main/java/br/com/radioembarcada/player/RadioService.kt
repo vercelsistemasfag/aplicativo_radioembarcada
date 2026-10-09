@@ -102,7 +102,7 @@ class RadioService : MediaLibraryService() {
                 .setIsBrowsable(false).setIsPlayable(true)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_RADIO_STATION).build()).build()
         programming.startSession()
-        engine = ProgramPlayer(this, localSource)
+        engine = ProgramPlayer(this, localSource) { if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", it) }
         val sessionPlayer = object : ForwardingPlayer(player) {
             override fun play() {
                 // Media3 1.6 também chama play após falha/cancelamento de onPlaybackResumption.

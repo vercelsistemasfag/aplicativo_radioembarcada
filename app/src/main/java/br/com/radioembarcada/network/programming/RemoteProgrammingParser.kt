@@ -15,9 +15,13 @@ object RemoteProgrammingParser {
         val rules = root.getJSONObject("rules")
         val interval = positiveInteger(rules.opt("songsBetweenInsertions"))
         require(interval <= Int.MAX_VALUE)
-        val alternate = rules.opt("alternateStationIdAndJingle") as? Boolean
+        val alternate = (rules.opt("alternateInsertionTypes") ?: rules.opt("alternateStationIdAndJingle")) as? Boolean
             ?: error("Invalid alternation rule")
-        return StationProgramming(stationId, version, ProgrammingRules(interval.toInt(), alternate),
+        val pattern = if (rules.has("insertionPattern")) {
+            val values = rules.getJSONArray("insertionPattern")
+            (0 until values.length()).map { ProgramItemType.valueOf(values.getString(it)) }
+        } else ProgrammingRules.DEFAULT_INSERTION_PATTERN
+        return StationProgramming(stationId, version, ProgrammingRules(interval.toInt(), alternate, pattern),
             pieces(root, "stationIds", stationId, ProgramItemType.STATION_ID),
             pieces(root, "jingles", stationId, ProgramItemType.JINGLE))
     }

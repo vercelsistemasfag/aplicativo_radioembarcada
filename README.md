@@ -4,7 +4,7 @@ Rádio Alce reproduz faixas individuais da programação, sem emissora externa. 
 
 Catálogo público do MVP: [music_catalog.json](https://pub-e38948fd737d4d969bb4e65eebed0249.r2.dev/music_catalog.json). O catálogo atual possui versão 1 e 77 itens MUSIC; esses números não são fixados no código. A configuração fica em `network/catalog/RemoteCatalogConfiguration.kt`.
 
-Regras e peças da estação: [programming.json](https://pub-e38948fd737d4d969bb4e65eebed0249.r2.dev/programming.json), carregado pelo **RemoteProgrammingProvider**, separado do MusicProvider. A configuração publicada da estação `alce`, versão 1, possui `songsBetweenInsertions=3`, `alternateStationIdAndJingle=true`, uma vinheta e um jingle. O runtime usa o JSON remoto; fixtures existem somente em testes.
+Regras e peças da estação: [programming.json](https://pub-e38948fd737d4d969bb4e65eebed0249.r2.dev/programming.json), carregado pelo **RemoteProgrammingProvider**, separado do MusicProvider. A configuração publicada da estação `alce`, versão 3, possui **quatro vinhetas e três jingles**. A regra corrigida desta fase é **uma peça por troca**, no ciclo **STATION_ID → STATION_ID → JINGLE**. O runtime usa o JSON remoto; fixtures existem somente em testes.
 
 ## Abrir e executar
 
@@ -42,7 +42,7 @@ RemoteMusicProvider + RemoteProgrammingProvider
 | `player/RadioService` | MediaLibraryService/MediaLibrarySession, coordenação da fila e controles externos. |
 | `ui` | MediaController/ViewModel/Compose; não consulta API ou arquivos musicais. |
 
-ProgramItem mantém MUSIC, STATION_ID, JINGLE, ADVERTISEMENT e ANNOUNCEMENT. Apenas MUSIC é aceito pelo catálogo musical; STATION_ID/JINGLE vêm do provider de programação. Publicidade e crossfade continuam fora desta etapa.
+ProgramItem mantém MUSIC, STATION_ID, JINGLE, ADVERTISEMENT e ANNOUNCEMENT. Apenas MUSIC é aceito pelo catálogo musical; STATION_ID/JINGLE vêm do provider de programação. Publicidade continua fora desta etapa. Conforme a correção da regra, não há crossfade/overlap: os 15 segundos são somente a saída da música antes da peça.
 
 ## Catálogo e fila
 
@@ -58,17 +58,35 @@ O ExoPlayer avança naturalmente entre fontes. A fila é reabastecida durante a 
 
 ## Vinhetas e jingles da programação remota
 
-`network/programming/RemoteProgrammingConfiguration.kt` centraliza a URL e os limites. O parser valida `stationId`, `version`, intervalo inteiro positivo e alternância booleana. O provider aceita somente a estação do tenant ativo. Itens inválidos, sem URL HTTPS ou com tipo incorreto são ignorados; listas ausentes/vazias são permitidas. O player recebe somente ProgramItem e não conhece JSON, regras ou URLs específicas das peças.
+`network/programming/RemoteProgrammingConfiguration.kt` centraliza a URL e os limites. O parser valida `stationId`, `version` e regras, aceitando `alternateInsertionTypes` (versão 3) e o campo legado `alternateStationIdAndJingle`. `songsBetweenInsertions` é preservado para compatibilidade do JSON, mas **não significa esperar três músicas** nesta fase. O provider aceita somente a estação do tenant ativo. Itens inválidos, sem URL HTTPS ou com tipo incorreto são ignorados; listas ausentes/vazias são permitidas. O player recebe somente ProgramItem e não conhece JSON, regras ou URLs específicas das peças.
 
-Com o JSON atual, a sequência é **3 MUSIC → STATION_ID → 3 MUSIC → JINGLE → 3 MUSIC → STATION_ID**, repetindo. O número de músicas é sempre recebido das regras. O contador e a alternância persistem entre lotes/ciclos; a peça é acrescentada após a música completa. Sempre há MUSIC entre peças, inclusive com intervalo 1 ou sem um dos tipos. Se faltar um tipo, usa-se o disponível a cada bloco; se ambos faltarem, seguem somente músicas. Com alternância desativada, a escolha do tipo é pseudoaleatória, ainda separada por músicas; peças de cada tipo percorrem sua lista em rodízio.
+Em **toda troca**, a sequência é **MUSIC → STATION_ID → MUSIC → STATION_ID → MUSIC → JINGLE → MUSIC**, repetindo. O jingle **substitui** a vinheta na terceira troca; jamais há duas peças no mesmo intervalo. `ProgrammingRules.DEFAULT_INSERTION_PATTERN` centraliza `[STATION_ID, STATION_ID, JINGLE]`. Um `rules.insertionPattern` explícito no JSON pode substituir o padrão, com tipos validados. O contador avança por inserções, persiste entre lotes/ciclos e não muda no Pause.
 
+Vinhetas e jingles possuem **shuffle-bags independentes**, alimentados exclusivamente pelos itens do JSON remoto: todas as quatro vinhetas e todos os três jingles são utilizados uma vez em seus respectivos bags antes de reembaralhar. A fronteira evita repetir a mesma peça quando existem alternativas. Mudanças no catálogo das peças atualizam o bag; atualização apenas de metadados não o reinicia. Não há URLs de peças hardcoded no player. Se faltar um tipo, o disponível mantém uma única peça por troca; ambos ausentes ou programação indisponível sem cache deixam somente músicas.
 Cada inserção recebe ID de ocorrência único na fila. `contentId` identifica o áudio original, compartilhando cache entre repetições da mesma vinheta/jingle; a URL continua participando da chave para invalidar áudio alterado. As peças usam a mesma fonte progressiva, cache LRU, preload, retry e sessão das músicas. Não são baixadas em bloco nem empacotadas no APK. O fim natural da peça inicia a próxima música sem recriar ExoPlayer ou MediaSession.
 
-O último JSON válido fica em `filesDir/programming.json`. Falhas HTTP/parsing/gravação não interrompem músicas nem descartam uma configuração válida; sem versão salva, a rádio toca somente músicas. As consultas acontecem ao montar novos lotes, com refresh mínimo de **15 minutos** e nova tentativa após falha elegível a partir de **30 segundos**, na próxima montagem. Conexão/leitura têm timeout de **5 segundos** cada e a resposta é limitada a **256 KiB**. Atualizações valem para lotes futuros; itens já preparados não são reordenados e a música atual não é interrompida. Mudança no intervalo inicia a nova contagem no próximo lote.
+O último JSON válido fica em `filesDir/programming.json`. Falhas HTTP/parsing/gravação não interrompem músicas nem descartam uma configuração válida; sem versão salva, a rádio toca somente músicas. As consultas acontecem ao montar novos lotes, com refresh mínimo de **15 minutos** e nova tentativa após falha elegível a partir de **30 segundos**, na próxima montagem. Conexão/leitura têm timeout de **5 segundos** cada e a resposta é limitada a **256 KiB**. Atualizações valem para lotes futuros; itens já preparados não são reordenados e a música atual não é interrompida. Mudança no padrão explícito inicia um novo ciclo no próximo lote; o campo legado de intervalo não altera a frequência corrigida.
 
-DEBUG registra `Fila: música 1/3`, `2/3`, `3/3` (ou o intervalo recebido), inserção selecionada e falhas sanitizadas, além do próximo ProgramItem nas transições. Esses contadores indicam itens agendados, não posição de áudio; logs não aparecem em release. O modo opt-in de assets continua exclusivamente local e não consulta programming.json.
+DEBUG registra `Fila: troca 1/3`, `2/3`, `3/3`, inserção selecionada e falhas sanitizadas, além do próximo ProgramItem nas transições. Esses contadores indicam itens agendados, não posição de áudio; logs não aparecem em release. O modo opt-in de assets continua exclusivamente local e não consulta programming.json.
 
-Pause preserva a fila e sua contagem. Quando o serviço é recriado após liberar a fila anterior, uma nova sessão começa com um bloco completo de músicas e STATION_ID como primeira inserção; não reutiliza a contagem de itens descartados.
+Pause preserva fila, bags, posição do áudio e ciclo. Ao recriar o serviço após liberar a fila, uma nova sessão começa na posição 1 (STATION_ID).
+
+## Política de transições
+
+`TransitionPolicy` decide a passagem por tipo; `AudioTransitionController` aplica apenas envelopes de volume ao **mesmo ExoPlayer**, sem seek, stop, players auxiliares ou timers que avancem faixas. O ProgrammingEngine continua decidindo o conteúdo.
+
+| Passagem | Comportamento |
+| --- | --- |
+| MUSIC → STATION_ID/JINGLE/peça curta | Saída smoothstep nos **últimos 15.000 ms** da música; ela termina naturalmente. A peça entra com rampa de **300 ms**. |
+| Peça curta → MUSIC | Peça toca integralmente; avanço natural do Media3, sem atraso programado/overlap; música entra com rampa de **100 ms**. |
+| MUSIC → MUSIC, se peças indisponíveis | Avanço natural sem overlap. |
+| Peça curta → peça curta | Proibido pela fila e pela validação do player. |
+
+`player/TransitionPolicy.kt` centraliza tempos e ganhos: MUSIC **0,90**; STATION_ID, JINGLE, ADVERTISEMENT e ANNOUNCEMENT **0,80**. Não há soma de áudios nem crossfade de 15 segundos sobre peças. Essas peças não recebem fade-out antecipado: uma peça de 8, 12 ou 20 segundos toca até o fim. Ganhos fixos não substituem normalização/masterização do catálogo.
+
+O envelope segue **a posição real de reprodução**, congelando em Pause/rebuffer e retomando na mesma posição. Duração desconhecida não provoca corte nem avanço antecipado. DEBUG registra tipo, conteúdo, duração real conhecida, fade de 15 s, conclusão por avanço natural, callback real de preload e esperas de buffering observadas. Logs não afirmam gap acústico zero apenas por um evento de timeline.
+
+Sem silêncio perceptível depende do áudio original, codec, dispositivo e dados efetivamente preparados; o código não acrescenta intervalo e não aguarda um download deliberadamente após a peça. Validar auditivamente o APK em aparelho continua necessário.
 
 ## Controles externos da rádio
 
@@ -97,13 +115,13 @@ Configurações centralizadas em `player/PlaybackConfiguration.kt`:
 | Início de reprodução | 1,5 s |
 | Retomada após rebuffer | 3 s |
 | Preload da próxima faixa | 45 s |
-| Preload da segunda próxima | 15 s |
+| Preload da segunda próxima | 45 s quando sucede peça curta; 15 s no fallback só musical |
 | Cache LRU | **300 MiB / 314.572.800 bytes** |
 | Descarte por idade na próxima inicialização | 24 h |
 
 RadioLoadControl preserva os métodos encaminhados explicitamente ao DefaultLoadControl, incluindo back buffer e lifecycle, evitando o crash corrigido anteriormente. A histerese constrói o buffer progressivamente sem esperar dezenas de segundos para iniciar.
 
-DefaultPreloadManager do Media3 1.6.1 compartilha fontes, allocator e looper com o player. Após 30 s do buffer atual, prepara o próximo ProgramItem e parte do segundo. No fim da música ou durante uma peça com até 30 s restantes, a preparação continua habilitada, evitando descartar a próxima música porque uma peça curta não atinge o buffer mínimo. O restante da biblioteca não é baixado antecipadamente.
+DefaultPreloadManager do Media3 1.6.1 compartilha fontes, allocator e looper com o player. Após 30 s do buffer atual, prepara o próximo ProgramItem (45 s ou até seu fim). Se ele for peça curta, prepara também **45 s da música que vem depois**, ainda durante a música atual; durante a peça, a música seguinte continua prioritária. `PreloadPlan` limita a preparação a dois próximos itens. No fim da música ou durante uma peça com até 30 s restantes, a preparação continua habilitada, evitando descartar a próxima música porque uma peça curta não atinge o buffer mínimo. Pause/perda de rede não invalidam os alvos já preparados. O restante da biblioteca não é baixado antecipadamente. O listener oficial confirma conclusão do alvo de preload; isso não garante disponibilidade permanente se o Android/cache descartar dados.
 
 SimpleCache + LeastRecentlyUsedCacheEvictor usam o `cacheDir` privado e StandaloneDatabaseProvider. Player/preload compartilham dados e removem os mais antigos por LRU. Chaves incluem ID e hash da URL, evitando reutilizar áudio antigo quando a URL muda com o mesmo ID. O Android pode limpar o cache; após 24 h, uma nova inicialização descarta o cache anterior. Não existe downloader, biblioteca permanente ou opção de download offline.
 
@@ -136,13 +154,13 @@ A versão anterior com biblioteca tinha **771.352.284 bytes / 735,6 MiB**. O tam
 ## Teste manual e validação
 
 1. Instale o APK remoto, abra Rádio Alce conectado e pressione Play. Confira música e avanço automático; artista vazio não deve aparecer.
-   Aguarde três músicas completas: deve entrar a vinheta Rádio Alce. Após mais três, o jingle Tarifa Fixa no Alce; depois, a vinheta novamente. Nenhuma música deve ser interrompida e nunca deve haver duas peças curtas consecutivas.
+   A cada troca deve haver uma peça: nas duas primeiras, vinheta; na terceira, somente jingle; repetir. Confira saída suave nos últimos 15 s da música, entrada curta, peça integral e próxima música imediata. Escute oito vinhetas e seis jingles: cada bag deve percorrer respectivamente quatro/três conteúdos sem repetição imediata. Nenhuma peça pode ser cortada nem seguida de outra peça.
 2. Deixe tocar por 30–60 s para abastecer buffer/preload. Desligue Wi-Fi e dados móveis: o áudio preparado deve continuar até esgotar.
 3. Recupere rede antes de esgotar e confira continuidade de posição, música e sessão. Repita Wi-Fi → dados móveis e retorno.
 4. Após ouvir faixas e salvar catálogo, reabra temporariamente offline. Trechos já armazenados podem tocar; conteúdo não armazenado exige rede. Instalação nova offline mostra Programação indisponível sem crash.
 5. Coloque o app em segundo plano e confira que notificação/player do sistema oferecem somente Play/Pause, sem anterior/próxima ou seek. Bloqueie a tela e repita. Via Bluetooth/Android Auto, confira Play/Pause e metadados; comandos NEXT/PREVIOUS não devem mudar a faixa. Aguarde o fim natural de uma música e confira o avanço automático. Teste também tela apagada, chamadas e Audio Focus. A apresentação exata depende do Android/veículo e precisa de validação em dispositivo.
 6. Confira logs de debug com `adb logcat -s RadioDiagnostics`; diagnósticos não aparecem em release/UI.
 
-Os testes JVM não dependem de internet nem dos 77 MP3 reais. Cobrem parsing/validação, catálogo de 77 itens simulado, cache de JSON, fallback offline, refresh/versionamento/backoff, ciclos aleatórios, ProgramItem, estados, buffer e chaves do cache. Também preservam os testes de assets/Jamendo e lifecycle do LoadControl. Testes da sessão usam Robolectric e as ferramentas oficiais de teste do Media3 (somente em testImplementation), com ExoPlayer real e fontes/clock simulados: permissões de controladores comuns e da notificação, Play/Pause, bloqueio de navegação, metadados, avanço interno e fim natural através de MUSIC/STATION_ID/JINGLE. Os scripts antigos de preparação da biblioteca ficam preservados, fora do workflow atual; seus testes podem ser executados com `python3 -m unittest discover -s scripts -p 'test_*.py' -v`.
+Os testes JVM não dependem de internet nem dos 77 MP3 reais. Cobrem parsing/validação, catálogo de 77 itens simulado, cache de JSON, fallback offline, refresh/versionamento/backoff, ciclos aleatórios, ProgramItem, estados, buffer e chaves do cache. Também preservam os testes de assets/Jamendo e lifecycle do LoadControl. Testes da sessão usam Robolectric e as ferramentas oficiais de teste do Media3 (somente em testImplementation), com ExoPlayer real e fontes/clock simulados: permissões de controladores comuns e da notificação, Play/Pause, bloqueio de navegação, metadados, avanço interno, padrão 1-2-3, bags independentes, preload da música após a peça, envelopes de ganho, Pause/Play e fim natural integral de peças de 8/12/20 s através do ExoPlayer real simulado. Os scripts antigos de preparação da biblioteca ficam preservados, fora do workflow atual; seus testes podem ser executados com `python3 -m unittest discover -s scripts -p 'test_*.py' -v`.
 
 Lint mantém visíveis os avisos de dependências, serviço exportado para controladores, HTTP herdado e target SDK 35. Manifest, permissões de mídia, MediaSession/MediaLibraryService, Audio Focus e estrutura Android Auto permanecem; a validação automática não substitui teste audível em aparelho. Nenhuma dependência de produção nova foi adicionada.

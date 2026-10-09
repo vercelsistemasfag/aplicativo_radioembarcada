@@ -87,7 +87,7 @@ class RadioSessionCallbackTest {
                 .setMediaType(if (program.type == ProgramItemType.MUSIC) MediaMetadata.MEDIA_TYPE_MUSIC
                     else MediaMetadata.MEDIA_TYPE_MIXED).build()).build()
         return FakeMediaSource(FakeTimeline(FakeTimeline.TimelineWindowDefinition(
-            1, program.id, true, false, false, false, C.MICROS_PER_SECOND, 0, 0,
+            1, program.id, true, false, false, false, program.durationMs * 1_000, 0, 0,
             listOf(AdPlaybackState.NONE), media)))
     }
 
@@ -200,6 +200,50 @@ class RadioSessionCallbackTest {
         assertEquals("Title music-2", controller.mediaMetadata.title)
     }
 
+    @Test fun transitionControllerPreservesFullPiecesAndImmediateNaturalAdvance() {
+        val items = listOf(item("m1").copy(durationMs = 30_000),
+            item("s1", ProgramItemType.STATION_ID).copy(durationMs = 8_000),
+            item("m2").copy(durationMs = 30_000),
+            item("s2", ProgramItemType.STATION_ID).copy(durationMs = 12_000),
+            item("m3").copy(durationMs = 30_000),
+            item("j1", ProgramItemType.JINGLE).copy(durationMs = 20_000), item("m4"))
+        val logs = mutableListOf<String>()
+        val control = AudioTransitionController(player,
+            current = { items.find { it.id == player.currentMediaItem?.mediaId } },
+            next = { items.getOrNull(player.currentMediaItemIndex + 1) },
+            prepared = { true }, diagnostic = logs::add)
+        val boundaries = mutableListOf<Pair<String?, Long>>()
+        player.addListener(object : Player.Listener {
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                    boundaries += oldPosition.mediaItem?.mediaId to oldPosition.positionMs
+                    assertEquals(0L, newPosition.positionMs)
+                }
+            }
+        })
+        try {
+            player.setMediaSources(items.map(::source)); player.prepare()
+            advance(player).untilState(Player.STATE_READY)
+            player.play()
+            advance(player).untilPosition(0, 20_000)
+            player.pause()
+            advance(player).untilPendingCommandsAreFullyHandled()
+            val pausedPosition = player.currentPosition
+            assertEquals("m1", player.currentMediaItem?.mediaId)
+            assertEquals(TransitionPolicy.volume(ProgramItemType.MUSIC, ProgramItemType.STATION_ID,
+                pausedPosition, 30_000), player.volume, 0.001f)
+            player.play()
+            advance(player).untilState(Player.STATE_ENDED)
+            for (id in listOf("s1", "s2", "j1")) {
+                assertEquals(items.single { it.id == id }.durationMs, boundaries.single { it.first == id }.second)
+            }
+            assertEquals(items.dropLast(1).map { it.id }, boundaries.map { it.first })
+            assertTrue(logs.any { "music fade: 15000 ms" in it })
+            assertTrue(logs.any { "Peça concluída por avanço natural=true" in it })
+        } finally { control.release() }
+    }
+
     @Test fun naturalEndContinuesThroughMusicStationIdAndJingleWithoutExternalSeek() = runBlocking {
         val provider = object : MusicProvider {
             override val providesCompleteCatalog = true
@@ -212,7 +256,7 @@ class RadioSessionCallbackTest {
             RemoteProgrammingParser.parse(checkNotNull(javaClass.getResource("/programming.json")).readText())
         })
         val program = programming.nextBatch()
-        assertEquals(listOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE, ProgramItemType.STATION_ID),
+        assertEquals(List(9) { if (it % 3 == 2) ProgramItemType.JINGLE else ProgramItemType.STATION_ID },
             program.filter { it.type != ProgramItemType.MUSIC }.map { it.type })
         player.setMediaSources(program.map(::source))
         val transitions = mutableListOf<Pair<String?, Int>>()
