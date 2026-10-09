@@ -125,6 +125,8 @@ class RadioService : MediaLibraryService() {
         }
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
+                // O envelope muda ganho a cada 20 ms: não retransmitir estado da UI nesse ritmo.
+                if (events.size() == 1 && events.contains(Player.EVENT_VOLUME_CHANGED)) return
                 if (player.isPlaying) {
                     hasPlayed = true
                     recovering = false
