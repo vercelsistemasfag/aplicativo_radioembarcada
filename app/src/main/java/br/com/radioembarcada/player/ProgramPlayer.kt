@@ -27,7 +27,8 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
     private val diagnostic: (String) -> Unit = {}) {
     private data class Entry(val program: ProgramItem, val media: MediaItem)
     private val entries = mutableListOf<Entry>()
-        private val database = StandaloneDatabaseProvider(context)
+    private val database = StandaloneDatabaseProvider(context)
+    private val prefix = InsertSilenceProcessor(diagnostic)
     private val cache: SimpleCache
     private val readiness = PlaybackReadiness(diagnostic)
     private val loadControl: RadioLoadControl
@@ -69,7 +70,8 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
                 PlaybackConfiguration.LOCAL_START_BUFFER_MS, PlaybackConfiguration.LOCAL_REBUFFER_MS)
             .setPrioritizeTimeOverSizeThresholds(true).build(), localSource = true, playlistPreload = true) else RadioLoadControl(playlistPreload = true)
         loadControl.currentAudio = readiness::get
-        player = ExoPlayer.Builder(context).setMediaSourceFactory(observedFactory).setLoadControl(loadControl).build().apply {
+        player = ExoPlayer.Builder(context, RadioRenderersFactory(context, prefix))
+            .setMediaSourceFactory(observedFactory).setLoadControl(loadControl).build().apply {
             setPreloadConfiguration(ExoPlayer.PreloadConfiguration(PlaybackConfiguration.NEXT_TRACK_PRELOAD_MS * 1_000))
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
@@ -85,7 +87,8 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
             current = { entries.getOrNull(player.currentMediaItemIndex)?.program
                 ?.takeIf { it.id == player.currentMediaItem?.mediaId } },
             next = { entries.getOrNull(player.currentMediaItemIndex + 1)?.program },
-            readiness = { readiness.get(it.id) }, diagnostic = diagnostic)
+            readiness = { readiness.get(it.id) }, diagnostic = diagnostic,
+            removedPrefixMs = { prefix.removedMs(it.id) })
     }
 
     fun isCached(item: ProgramItem): Boolean = cache.getCachedSpans(audioCacheKey(item))
@@ -117,7 +120,7 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
     fun trimPlayed() {
         val count = player.currentMediaItemIndex.coerceAtLeast(0)
         if (count == 0 || count >= entries.size) return
-        repeat(count) { entries.removeAt(0) }
+        repeat(count) { prefix.forget(entries.removeAt(0).program.id) }
         player.removeMediaItems(0, count)
     }
 

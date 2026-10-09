@@ -23,6 +23,27 @@ import org.robolectric.annotation.LooperMode
 @Config(sdk = [28], application = Application::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 class ProgramPlayerProgrammingTest {
+    @Test fun allSevenStationsUseIdenticalMediaItemPipelineGainAndCachePolicy() {
+        val config = RemoteProgrammingParser.parse(checkNotNull(javaClass.getResource("/programming-v4.json")).readText())
+        val engine = ProgramPlayer(RuntimeEnvironment.getApplication())
+        try {
+            val batch = config.stationIds.flatMapIndexed { index, item -> listOf(
+                br.com.radioembarcada.model.ProgramItem("music-$index", ProgramItemType.MUSIC,
+                    "Music", "https://example.org/music-$index.mp3", 180_000), item) }
+            val media = engine.register(batch)
+            engine.player.setMediaItems(media)
+            val pieces = media.filter { it.mediaMetadata.extras?.getString("programType") == "STATION_ID" }
+            assertEquals(7, pieces.size)
+            assertEquals(config.stationIds.map { it.id }, pieces.map { it.mediaId })
+            pieces.zip(config.stationIds).forEach { (item, program) ->
+                assertEquals(program.audioUrl, item.localConfiguration?.uri.toString())
+                assertEquals(audioCacheKey(program), item.localConfiguration?.customCacheKey)
+                assertEquals(program.title, item.mediaMetadata.title)
+                assertEquals(TransitionConfiguration.STATION_ID_GAIN, TransitionPolicy.gain(program.type), 0f)
+                assertEquals(45_000L, PreloadPlan.durationMs(1, program.type, false))
+            }
+        } finally { engine.release() }
+    }
     @Test fun repeatedPiecesEnterTheActualPlayerPipelineWithSharedCacheAndMetadata() = runBlocking {
         val provider = object : MusicProvider {
             override val providesCompleteCatalog = true

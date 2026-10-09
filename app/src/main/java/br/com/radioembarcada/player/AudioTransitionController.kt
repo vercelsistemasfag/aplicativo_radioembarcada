@@ -16,6 +16,7 @@ internal class AudioTransitionController(
     private val next: () -> ProgramItem?,
     private val readiness: (ProgramItem) -> PlaybackReadiness.Snapshot,
     private val diagnostic: (String) -> Unit = {},
+    private val removedPrefixMs: (ProgramItem) -> Long = { 0 },
 ) : Player.Listener {
     private val handler = Handler(player.applicationLooper)
     private var previous: ProgramItem? = null
@@ -29,7 +30,7 @@ internal class AudioTransitionController(
             updateVolume()
             if (player.isPlaying) {
                 val item = current()
-                val position = player.currentPosition
+                val position = (player.currentPosition - (item?.let(removedPrefixMs) ?: 0)).coerceAtLeast(0)
                 val duration = player.duration
                 val ramp = if (item?.type == ProgramItemType.MUSIC) TransitionConfiguration.MUSIC_ENTRY_MS else TransitionConfiguration.INSERT_ENTRY_MS
                 val fading = item?.type == ProgramItemType.MUSIC && next()?.type?.let {
@@ -91,7 +92,8 @@ internal class AudioTransitionController(
         if (item.type == ProgramItemType.MUSIC && player.isPlaying && duration > 0) {
             estimatedMusicEndMs = android.os.SystemClock.elapsedRealtime() + (duration - player.currentPosition).coerceAtLeast(0)
         }
-        player.volume = TransitionPolicy.volume(item.type, following?.type, player.currentPosition, duration)
+        val envelopePosition = (player.currentPosition - removedPrefixMs(item)).coerceAtLeast(0)
+        player.volume = TransitionPolicy.volume(item.type, following?.type, envelopePosition, duration)
         if (item.type == ProgramItemType.MUSIC && following != null &&
             TransitionPolicy.resolve(item.type, following.type) == TransitionType.MUSIC_TO_INSERT &&
             duration > 0 && duration - player.currentPosition <= TransitionConfiguration.MUSIC_FADE_OUT_MS &&

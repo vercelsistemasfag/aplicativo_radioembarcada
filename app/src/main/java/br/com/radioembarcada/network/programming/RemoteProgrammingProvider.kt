@@ -44,6 +44,10 @@ class RemoteProgrammingProvider(
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { diagnostic("Falha ao salvar programação; versão válida mantida em memória.") }
                     diagnostic("Programação carregada: estação=${loaded.stationId}; versão=${loaded.version}; uma peça por troca; padrão=${loaded.rules.insertionPattern.joinToString(" -> ")}; stationIds=${loaded.stationIds.size}; jingles=${loaded.jingles.size}")
+                    diagnostic("Programming config version: ${loaded.version}; Station IDs loaded: ${loaded.stationIds.size}; Jingles loaded: ${loaded.jingles.size}")
+                    diagnostic("Programming items: " + (loaded.stationIds + loaded.jingles).take(12)
+                        .joinToString { it.contentId.substringAfterLast(':') } +
+                        if (loaded.stationIds.size + loaded.jingles.size > 12) " …" else "")
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {

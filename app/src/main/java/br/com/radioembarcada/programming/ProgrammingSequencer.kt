@@ -9,6 +9,7 @@ import kotlin.random.Random
 internal class ProgrammingSequencer(private val diagnostic: (String) -> Unit = {},
     private val random: Random = Random.Default) {
     private var station: String? = null
+    private var version: Long? = null
     private var pattern = emptyList<ProgramItemType>()
     private var insertionPosition = 0
     private var stations = ShuffleBag(random)
@@ -17,6 +18,7 @@ internal class ProgrammingSequencer(private val diagnostic: (String) -> Unit = {
 
     fun startSession() {
         station = null
+        version = null
         pattern = emptyList()
         insertionPosition = 0
         stations = ShuffleBag(random)
@@ -27,6 +29,12 @@ internal class ProgrammingSequencer(private val diagnostic: (String) -> Unit = {
         require(music.all { it.type == ProgramItemType.MUSIC })
         if (configuration == null) return music
         if (station != configuration.stationId) { startSession(); station = configuration.stationId }
+        if (version != configuration.version) {
+            stations.invalidate()
+            jingles.invalidate()
+            version = configuration.version
+            diagnostic("Programming config version: $version; Station IDs loaded: ${configuration.stationIds.size}; Jingles loaded: ${configuration.jingles.size}")
+        }
         if (pattern != configuration.rules.insertionPattern) {
             pattern = configuration.rules.insertionPattern.toList()
             insertionPosition = 0
@@ -44,6 +52,7 @@ internal class ProgrammingSequencer(private val diagnostic: (String) -> Unit = {
                     val scheduled = piece.copy(id = "${piece.id}:occurrence:${occurrence++}")
                     add(scheduled)
                     diagnostic("Inserção selecionada: ${piece.type}; conteúdo=${piece.contentId}; item=${scheduled.id}")
+                    diagnostic("${if (piece.type == ProgramItemType.STATION_ID) "StationIdBag" else "JingleBag"} remaining: ${if (piece.type == ProgramItemType.STATION_ID) stations.remaining else jingles.remaining}; Selected: ${piece.contentId.substringAfterLast(':')}")
                 }
                 insertionPosition = (insertionPosition + 1) % pattern.size
             }

@@ -9,6 +9,11 @@ internal class ShuffleBag(private val random: Random) {
     private val pending = ArrayDeque<String>()
     private var last: String? = null
 
+    val remaining: Int get() = pending.size
+
+    /** Nova revisão descarta o bag pendente, mas conserva a proteção da fronteira. */
+    fun invalidate() { pending.clear(); keys = emptySet() }
+
     fun next(pool: List<ProgramItem>): ProgramItem? {
         val catalog = pool.distinctBy { it.contentId }.associateBy { it.contentId }
         if (catalog.isEmpty()) { pending.clear(); keys = emptySet(); return null }

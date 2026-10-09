@@ -44,7 +44,10 @@ class PlaylistPreloadTest {
             program("station", ProgramItemType.STATION_ID, 8_000),
             program("music2", ProgramItemType.MUSIC, 60_000),
             program("jingle", ProgramItemType.JINGLE, 12_000),
-            program("music3", ProgramItemType.MUSIC, 2_000))
+            program("music3", ProgramItemType.MUSIC, 60_000)) + (2..7).flatMap {
+                listOf(program("station$it", ProgramItemType.STATION_ID, 8_000),
+                    program("following-music-$it", ProgramItemType.MUSIC, 60_000))
+            }
         val readiness = PlaybackReadiness()
         assertFalse(readiness.get("station").ready) // URL/objeto não significam áudio preparado.
         val control = RadioLoadControl(playlistPreload = true).apply { currentAudio = readiness::get }
@@ -99,6 +102,12 @@ class PlaylistPreloadTest {
             assertEquals(12_000L, ends["jingle"])
             assertEquals(1, endedCount) // Nenhum STATE_ENDED/prepare entre MUSIC e INSERT.
             assertTrue(logs.any { "Next MediaItem in timeline: true" in it && "Next ready for immediate playback: true" in it })
+            for (id in listOf("station") + (2..7).map { "station$it" }) {
+                assertEquals(8_000L, ends[id])
+                assertTrue("Peça $id deve usar o mesmo preload real", logs.any {
+                    "inserção=$id;" in it && "next item preloaded=true" in it
+                })
+            }
         } finally { envelope.release(); player.release() }
         assertFalse(readiness.get("station").ready) // Buffer liberado não fica marcado ready.
     }

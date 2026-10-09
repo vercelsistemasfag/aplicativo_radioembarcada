@@ -19,6 +19,48 @@ class RemoteProgrammingProviderTest {
     }
     private fun fixture() = checkNotNull(javaClass.getResource("/programming.json")).readText()
 
+    @Test fun sevenStationsAndThreeJinglesAreSavedAndSurviveFailureAndOfflineRestart() = runBlocking {
+        val json = checkNotNull(javaClass.getResource("/programming-v4.json")).readText()
+        val directory = Files.createTempDirectory("programming-seven").toFile()
+        try {
+            val store = FileProgrammingConfiguration(directory.resolve("programming.json"))
+            var time = 0L
+            var fail = false
+            val logs = mutableListOf<String>()
+            val provider = RemoteProgrammingProvider("alce", store, now = { time }, download = {
+                if (fail) throw IOException("private request") else json
+            }, diagnostic = logs::add)
+            val valid = checkNotNull(provider.load())
+            assertEquals(7, valid.stationIds.size)
+            assertEquals(3, valid.jingles.size)
+            fail = true
+            time += RemoteProgrammingConfiguration.REFRESH_INTERVAL_MS
+            assertEquals(valid, provider.load())
+            val restarted = RemoteProgrammingProvider("alce", store, connected = { false },
+                download = { error("Must not download offline") })
+            assertEquals(valid, restarted.load())
+            assertEquals(json, store.read())
+            assertTrue(logs.any { "Station IDs loaded: 7" in it && "Jingles loaded: 3" in it })
+            assertTrue(logs.none { "https://" in it || "private request" in it })
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun newVersionReplacesOldFourStationCacheAndMalformedRefreshCannotDropNewItems() = runBlocking {
+        val old = checkNotNull(javaClass.getResource("/programming-v3.json")).readText()
+        val current = checkNotNull(javaClass.getResource("/programming-v4.json")).readText()
+        val store = Store(old)
+        var time = 0L
+        var response = current
+        val provider = RemoteProgrammingProvider("alce", store, now = { time }, download = { response })
+        assertEquals(7, provider.load()?.stationIds?.size)
+        assertEquals(current, store.json)
+        response = "invalid JSON"
+        time += RemoteProgrammingConfiguration.REFRESH_INTERVAL_MS
+        assertEquals(4L, provider.load()?.version)
+        assertEquals(7, provider.load()?.stationIds?.size)
+        assertEquals(current, store.json)
+    }
+
     @Test fun publishedSchemaMapsRulesAndBothKindsOfProgramItem() {
         val parsed = RemoteProgrammingParser.parse(fixture())
         assertEquals("alce", parsed.stationId)
