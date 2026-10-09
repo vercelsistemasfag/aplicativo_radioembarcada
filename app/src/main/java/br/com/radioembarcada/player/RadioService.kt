@@ -206,7 +206,7 @@ class RadioService : MediaLibraryService() {
         message = ""
         initialJob = scope.launch {
             try {
-                val batch = programming.nextBatch(excludedIds = failedLocalIds)
+                val batch = programming.nextBatch(excludedIds = failedLocalIds, prefer = { !sourceAvailable && engine.isCached(it) })
                 if (batch.isEmpty()) throw MusicProviderException("Programação indisponível.", false)
                 if (!future.isCancelled) {
                     message = ""
@@ -247,14 +247,14 @@ class RadioService : MediaLibraryService() {
     }
 
     private fun maybeRefill() {
-        if (!desiredPlayback || !sourceAvailable || catalogBlocked || retryScheduled ||
+        if (!desiredPlayback || (!sourceAvailable && !(application as RadioApplication).musicProvider.supportsSavedCatalog) || catalogBlocked || retryScheduled ||
             refillJob?.isActive == true || player.mediaItemCount == 0 ||
             player.mediaItemCount - player.currentMediaItemIndex - 1 > ProgrammingConfiguration.REFILL_REMAINING) return
         refillJob = scope.launch {
             try {
                 val ended = player.playbackState == Player.STATE_ENDED
                 val queued = if (ended) emptySet() else engine.items.map { it.id }.toSet()
-                val batch = programming.nextBatch(engine.items.lastOrNull(), queued, failedLocalIds)
+                val batch = programming.nextBatch(engine.items.lastOrNull(), queued, failedLocalIds, prefer = { !sourceAvailable && engine.isCached(it) })
                 if (batch.isEmpty()) {
                     if (ended) {
                         message = "Programação indisponível."
@@ -262,11 +262,10 @@ class RadioService : MediaLibraryService() {
                     }
                     return@launch
                 }
-                if (ended && localSource) engine.clearEndedQueue()
+                if (ended) engine.clearEndedQueue()
                 engine.append(batch)
                 message = ""
-                if (ended && desiredPlayback && (localSource || player.hasNextMediaItem())) {
-                    if (!localSource) player.seekToNextMediaItem()
+                if (ended && desiredPlayback) {
                     player.prepare()
                     player.play()
                 }
@@ -305,7 +304,9 @@ class RadioService : MediaLibraryService() {
         if (!::session.isInitialized || !::network.isInitialized) return
         val state = ConnectionState.resolve(desiredPlayback, sourceAvailable, player.isPlaying,
             player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE,
-            recovering || player.playerError != null)
+            recovering || player.playerError != null,
+            loadingCatalog = pendingInitial != null && message.isBlank(),
+            catalogUnavailable = player.mediaItemCount == 0 && message == "Programação indisponível.")
         session.setSessionExtras(Bundle().apply {
             putString(STATE_KEY, state.name)
             putBoolean(REQUESTED_KEY, desiredPlayback)

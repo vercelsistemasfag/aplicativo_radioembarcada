@@ -7,12 +7,11 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -39,32 +38,6 @@ jobs:
           test -d "$ANDROID_HOME/platforms/android-35"
           test -x "$ANDROID_HOME/build-tools/35.0.0/aapt"
           ./gradlew --version
-      - name: Download and extract private test music
-        env:
-          MUSIC_ARCHIVE_URL: ${{ secrets.MUSIC_ARCHIVE_URL }}
-          MUSIC_ARCHIVE_VARIABLE_PRESENT: ${{ vars.MUSIC_ARCHIVE_URL != '' }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [[ -n "$MUSIC_ARCHIVE_URL" || "$MUSIC_ARCHIVE_VARIABLE_PRESENT" == "true" ]]; then
-            sudo apt-get update -qq
-            sudo apt-get install --yes --no-install-recommends unrar
-          fi
-          if [[ -z "$MUSIC_ARCHIVE_URL" && "$MUSIC_ARCHIVE_VARIABLE_PRESENT" != "true" ]]; then
-            echo "::error::MUSIC_ARCHIVE_URL não configurado; este build de teste exige a biblioteca."
-            exit 1
-          fi
-          echo "MUSIC_ARCHIVE_URL detectado; download privado sem exibir a URL."
-          mkdir -p app/src/main/assets/music
-          python3 scripts/prepare_test_music.py
-          python3 - <<'PY'
-          from pathlib import Path
-          paths = [p for p in Path('app/src/main/assets/music').rglob('*') if p.is_file() and p.suffix.lower() == '.mp3']
-          print(f'MP3 encontrados em assets/music: {len(paths)}')
-          if not paths:
-              raise SystemExit('Nenhum MP3 foi encontrado após a extração da biblioteca de testes.')
-          PY
-      - name: Test music archive preparation
-        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
       - name: Unit tests
         run: ./gradlew test testDebugUnitTest --warning-mode all --max-workers=2
       - name: Android lint
@@ -93,31 +66,23 @@ jobs:
           warning_ids = Counter(issue.get('id') for issue in issues if issue.get('severity') == 'Warning')
           print('Avisos de lint por categoria: ' + ', '.join(
               f'{identifier}: {count}' for identifier, count in sorted(warning_ids.items())))
-          expected = {path.relative_to('app/src/main').as_posix() for path in
-                      pathlib.Path('app/src/main/assets/music').rglob('*')
-                      if path.is_file() and path.suffix.lower() == '.mp3'}
           apk_path = pathlib.Path('app/build/outputs/apk/debug/app-debug.apk')
           with zipfile.ZipFile(apk_path, metadata_encoding='utf-8') as apk:
-              included = {name for name in apk.namelist() if name.startswith('assets/music/') and name.lower().endswith('.mp3')}
-              print(f'Comparação dos assets: {len(expected)} MP3 esperados; {len(included)} MP3 no APK.')
-              if included != expected:
-                  print('Caminhos divergentes (amostra):', sorted(expected - included)[:3], sorted(included - expected)[:3])
-              assert expected and included == expected, 'Biblioteca musical ausente ou incompleta no APK'
-              assert all(apk.getinfo(name).file_size > 0 for name in included), 'MP3 vazio no APK'
-              music_count = len(included)
+              music_count = sum(name.lower().endswith('.mp3') for name in apk.namelist())
+              assert music_count == 0, 'O APK remoto não pode conter MP3 empacotados'
           print(f'APK: {apk_path.stat().st_size} bytes ({apk_path.stat().st_size / (1024 ** 2):.1f} MiB); assets/music/: {music_count} MP3.')
           summary = (f"Testes: {totals['tests']} aprovados. Lint: {errors} erros, {warnings} avisos. "
                      f"APK verificado; MP3 incluídos: {music_count}.")
           print(summary)
           import os
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
-              output.write(summary + '\n\nArtifact: **radio-embarcada-debug-com-musicas**, contendo **app-debug.apk**.\n')
+              output.write(summary + '\n\nArtifact: **radio-embarcada-debug-apk**, contendo **app-debug.apk**.\n')
           PY
           ls -lh app/build/outputs/apk/debug/app-debug.apk
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: radio-embarcada-debug-com-musicas
+          name: radio-embarcada-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7

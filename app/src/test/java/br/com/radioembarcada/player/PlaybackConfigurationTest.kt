@@ -33,6 +33,6 @@ class PlaybackConfigurationTest {
         assertEquals(64 * 1024, PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
         assertEquals(45_000L, PlaybackConfiguration.NEXT_TRACK_PRELOAD_MS)
         assertEquals(15_000L, PlaybackConfiguration.SECOND_TRACK_PRELOAD_MS)
-        assertTrue(PlaybackConfiguration.CACHE_BYTES in (150L * 1024 * 1024)..(250L * 1024 * 1024))
+        assertEquals(300L * 1024 * 1024, PlaybackConfiguration.CACHE_BYTES)
     }
 }

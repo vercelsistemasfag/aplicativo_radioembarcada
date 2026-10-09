@@ -7,8 +7,9 @@ import kotlin.random.Random
 class QueueBuilder(private val random: Random = Random.Default) {
     fun build(tracks: List<Track>, size: Int = ProgrammingConfiguration.BATCH_SIZE,
         previous: ProgramItem? = null, allowSameArtist: Boolean = false,
-        allowSingleTrackRepeat: Boolean = false): List<ProgramItem> {
-        val candidates = tracks.distinctBy(Track::key).shuffled(random).toMutableList()
+        allowSingleTrackRepeat: Boolean = false,
+        prefer: (ProgramItem) -> Boolean = { false }): List<ProgramItem> {
+        val candidates = tracks.distinctBy(Track::key).shuffled(random).sortedByDescending { prefer(ProgramItem.music(it)) }.toMutableList()
         val result = mutableListOf<ProgramItem>()
         var lastId = previous?.id
         var lastArtist = previous?.artistKey

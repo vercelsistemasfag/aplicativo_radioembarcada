@@ -1,12 +1,14 @@
 # MVP — Rádio Embarcada
 
-## Atualização autorizada — etapa 2
+## Atualização autorizada — catálogo remoto R2
 
-Para o ambiente de desenvolvimento, a fonte ativa agora é `LocalAssetMusicProvider`, que localiza MP3 recursivamente em `assets/music` (inclusive `music/MPB/`). A biblioteca é exclusivamente local, não versionada, e a programação funciona sem rede. Jamendo permanece disponível para integração futura, inativo em debug e release nesta fase. A biblioteca completa percorre ciclos aleatórios sem repetição antes de esgotar o ciclo, com buffer/preload próprios para assets. O workflow existente pode preparar a biblioteca privada durante o build usando MUSIC_ARCHIVE_URL; o aplicativo instalado continua totalmente offline. A separação MusicProvider → Programming → Player e MediaSession/MediaLibraryService permanece a mesma.
+A fonte ativa nesta fase é RemoteMusicProvider: catálogo público JSON versionado e faixas MP3 individuais do R2. A programação de testes é montada no app, em ciclos aleatórios completos, substituindo nesta etapa as referências históricas abaixo à programação exclusiva no servidor. Não há emissora de rádio contínua por trás.
 
-Para o teste privado/não comercial da etapa 2, a programação é montada localmente a partir de faixas individuais da API de tracks da Jamendo, sem emissora ou endpoint de rádio contínua. Essa instrução substitui, apenas nesta etapa, as referências abaixo ao stream final/programação exclusiva no servidor. O app mantém uma única estação sem gerenciamento de playlists pelo motorista.
+O último catálogo válido é salvo privadamente, com fallback em falhas/offline e refresh controlado. Media3 mantém streaming progressivo, buffer/preload e cache operacional LRU de 300 MiB, sem download da biblioteca. MusicProvider → Programming → ProgramItem → Player → MediaSession permanece separado; MediaLibraryService, segundo plano e estrutura Android Auto são preservados.
 
-A implementação separa MusicProvider, Programming/Queue e Player, usa ProgramItem extensível, buffer/preload/cache operacional e preserva MediaSession/MediaLibraryService. Nenhuma licença atual é presumida suficiente para a futura operação comercial. O motor definitivo, anúncios, vinhetas, jingles, backend e Android Auto completo continuam fora desta etapa. Configuração e roteiro de testes estão no README.
+LocalAssetMusicProvider permanece opt-in para desenvolvimento, Jamendo preservado e inativo. O APK padrão exclui music/** sem apagar músicas locais. O workflow existente não usa MUSIC_ARCHIVE_URL nem baixa MPB.rar; valida testes, lint, build e zero MP3 no APK antes do Artifact. Configuração e roteiro de validação estão no README.
+
+Nenhuma licença do MVP é presumida suficiente para operação comercial. Vinhetas/jingles, publicidade, autenticação musical, backend definitivo e Android Auto completo continuam fora desta etapa.
 
 
 ## Visão

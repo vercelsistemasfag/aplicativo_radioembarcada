@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.size(160.dp))
                             }
                             Text(track.title, style = MaterialTheme.typography.titleLarge)
-                            Text(track.artist, style = MaterialTheme.typography.bodyLarge)
+                            if (track.artist.isNotBlank()) Text(track.artist, style = MaterialTheme.typography.bodyLarge)
                             track.durationMs?.let { duration ->
                                 Text("Duração: ${duration / 60_000}:${((duration / 1_000) % 60).toString().padStart(2, '0')}")
                             }

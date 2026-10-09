@@ -34,4 +34,14 @@ class ConnectionStateTest {
         assertEquals(ConnectionState.PAUSED,
             ConnectionState.resolve(true, true, false, true, false))
     }
+
+    @Test fun loadingCatalogAndUnavailableDifferFromAudioConnectionAndPlayback() {
+        assertEquals(ConnectionState.LOADING_PROGRAMMING,
+            ConnectionState.resolve(true, true, false, false, false, loadingCatalog = true))
+        assertEquals(ConnectionState.UNAVAILABLE,
+            ConnectionState.resolve(true, false, false, false, true, catalogUnavailable = true))
+        assertEquals(ConnectionState.LIVE,
+            ConnectionState.resolve(true, false, true, false, true, catalogUnavailable = true))
+    }
+
 }

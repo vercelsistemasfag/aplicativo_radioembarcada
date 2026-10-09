@@ -15,6 +15,8 @@ val localConfiguration = Properties().apply {
 val jamendoClientId = providers.environmentVariable("JAMENDO_CLIENT_ID").orNull
     ?.takeIf { it.isNotBlank() } ?: localConfiguration.getProperty("jamendo.clientId", "")
 
+// Opt-in local preserva os arquivos no computador; o build remoto não empacota music/.
+val useLocalMusic = providers.gradleProperty("useLocalMusic").map { it.toBoolean() }.getOrElse(false)
 
 android {
     namespace = "br.com.radioembarcada"
@@ -23,9 +25,10 @@ android {
         applicationId = "br.com.radioembarcada"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
         buildConfigField("String", "JAMENDO_CLIENT_ID", JsonOutput.toJson(jamendoClientId))
+        buildConfigField("boolean", "USE_LOCAL_MUSIC", useLocalMusic.toString())
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -33,9 +36,21 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
+    if (!useLocalMusic) sourceSets.getByName("main").assets.setSrcDirs(
+        listOf(layout.buildDirectory.dir("generated/remoteAssets")))
     // Permite ler metadados via AssetFileDescriptor e buscar posições sem descompactar MP3.
     androidResources { noCompress += listOf("mp3", "MP3", "Mp3", "mP3") }
 }
+if (!useLocalMusic) {
+    val remoteAssets = tasks.register<Sync>("prepareRemoteAssets") {
+        from("src/main/assets")
+        exclude("music/**")
+        includeEmptyDirs = false
+        into(layout.buildDirectory.dir("generated/remoteAssets"))
+    }
+    tasks.named("preBuild").configure { dependsOn(remoteAssets) }
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))
     implementation("androidx.activity:activity-compose:1.10.1")

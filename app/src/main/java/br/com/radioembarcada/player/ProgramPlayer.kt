@@ -92,6 +92,9 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false) 
         }
     }
 
+    fun isCached(item: ProgramItem): Boolean = cache.getCachedSpans(audioCacheKey(item))
+        .any { it.position == 0L && it.length > 0 }
+
     fun register(batch: List<ProgramItem>): List<MediaItem> = batch.map { program ->
         require(entries.none { it.program.id == program.id }) { "Conteúdo já presente na fila" }
         val media = mediaItem(program)
@@ -144,7 +147,7 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false) 
     }
 
     private fun mediaItem(item: ProgramItem): MediaItem = MediaItem.Builder()
-        .setMediaId(item.id).setUri(item.audioUrl).setCustomCacheKey(item.id)
+        .setMediaId(item.id).setUri(item.audioUrl).setCustomCacheKey(audioCacheKey(item))
         .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
             .setArtworkUri(item.artworkUrl?.let(Uri::parse))
             .setArtworkData(item.artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER).setDurationMs(item.durationMs.takeIf { it > 0 })
@@ -158,3 +161,8 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false) 
                 putString("programType", item.type.name)
             }).build()).build()
 }
+
+/** URL alterada com o mesmo ID deve usar outro conteúdo no cache, sem expor URLs em chaves. */
+internal fun audioCacheKey(item: ProgramItem): String = item.id + ":" +
+    java.security.MessageDigest.getInstance("SHA-256").digest(item.audioUrl.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
