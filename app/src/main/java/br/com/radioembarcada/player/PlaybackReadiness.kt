@@ -44,6 +44,7 @@ internal class PlaybackReadiness(private val diagnostic: (String) -> Unit = {}) 
             delegate.prepare(object : MediaPeriod.Callback {
                 override fun onPrepared(mediaPeriod: MediaPeriod) {
                     state.snapshot = state.snapshot.copy(prepared = true)
+                    updateBuffer()
                     callback.onPrepared(this@ObservedPeriod)
                 }
                 override fun onContinueLoadingRequested(source: MediaPeriod) {
@@ -64,10 +65,15 @@ internal class PlaybackReadiness(private val diagnostic: (String) -> Unit = {}) 
         }
         override fun continueLoading(loadingInfo: LoadingInfo): Boolean = delegate.continueLoading(loadingInfo).also { updateBuffer() }
         override fun getBufferedPositionUs(): Long = updateBuffer()
-        private fun updateBuffer(): Long = delegate.bufferedPositionUs.also {
-            val previous = state.snapshot
-            state.snapshot = previous.copy(bufferedUs = it)
-            if (!previous.ready && state.snapshot.ready) diagnostic("Áudio pronto no pipeline: item=$id; prepared=${state.snapshot.prepared}; selected=${state.snapshot.selected}; bufferedUs=$it")
+        private fun updateBuffer(): Long {
+            // ProgressiveMediaPeriod carrega antes de descobrir as trilhas. Até onPrepared,
+            // getBufferedPositionUs lança IllegalStateException; não há buffer comprovado.
+            if (!state.snapshot.prepared) return state.snapshot.bufferedUs
+            return delegate.bufferedPositionUs.also {
+                val previous = state.snapshot
+                state.snapshot = previous.copy(bufferedUs = it)
+                if (!previous.ready && state.snapshot.ready) diagnostic("Áudio pronto no pipeline: item=$id; prepared=${state.snapshot.prepared}; selected=${state.snapshot.selected}; bufferedUs=$it")
+            }
         }
     }
 }

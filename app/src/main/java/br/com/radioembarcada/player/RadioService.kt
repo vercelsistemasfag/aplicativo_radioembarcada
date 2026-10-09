@@ -131,6 +131,7 @@ class RadioService : MediaLibraryService() {
                     hasPlayed = true
                     recovering = false
                     terminalErrors = 0
+                    message = ""
                 } else if (hasPlayed && player.playbackState == Player.STATE_BUFFERING) {
                     recovering = true
                 }
@@ -152,6 +153,9 @@ class RadioService : MediaLibraryService() {
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
+                if (BuildConfig.DEBUG) Log.e("RadioDiagnostics",
+                    "Playback failed: code=${error.errorCodeName}; item=${player.currentMediaItem?.mediaId}; " +
+                        "causes=${generateSequence<Throwable>(error) { it.cause }.take(6).joinToString(" -> ") { it.javaClass.simpleName }}")
                 if (localSource) {
                     if (BuildConfig.DEBUG) Log.w("RadioDiagnostics", "Faixa ignorada: ${player.currentMediaItem?.mediaId}; erro=${error.errorCodeName}")
                     player.currentMediaItem?.mediaId?.let { failedLocalIds.add(it) }
