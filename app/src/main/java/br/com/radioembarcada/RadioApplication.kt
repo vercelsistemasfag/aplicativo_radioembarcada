@@ -12,6 +12,10 @@ import br.com.radioembarcada.storage.FileMusicCatalog
 import br.com.radioembarcada.storage.LocalTenantStore
 import br.com.radioembarcada.storage.FileProgrammingConfiguration
 import br.com.radioembarcada.network.programming.RemoteProgrammingProvider
+import br.com.radioembarcada.network.news.RemoteNewsProvider
+import br.com.radioembarcada.news.NewsProgramming
+import br.com.radioembarcada.news.NewsConfiguration
+import br.com.radioembarcada.storage.FileNewsHistory
 
 class RadioApplication : Application() {
     val musicProvider: MusicProvider by lazy {
@@ -28,4 +32,11 @@ class RadioApplication : Application() {
                 diagnostic = diagnostic), diagnostic = diagnostic)
     }
     val tenants by lazy { TenantRepository(LocalTenantStore(this)) }
+    val news by lazy {
+        val diagnostic: (String) -> Unit = { if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", it) }
+        NewsProgramming(RemoteNewsProvider(diagnostic = diagnostic),
+            FileNewsHistory(filesDir.resolve("news_history.json")),
+            intervalMs = if (BuildConfig.DEBUG && BuildConfig.NEWS_INTERVAL_DEBUG > 0) BuildConfig.NEWS_INTERVAL_DEBUG
+                else NewsConfiguration.NEWS_INTERVAL_MS, diagnostic = diagnostic)
+    }
 }

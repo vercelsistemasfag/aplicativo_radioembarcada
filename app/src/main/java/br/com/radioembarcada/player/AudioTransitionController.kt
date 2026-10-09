@@ -20,7 +20,7 @@ internal class AudioTransitionController(
 ) : Player.Listener {
     private val handler = Handler(player.applicationLooper)
     private var previous: ProgramItem? = null
-    private var estimatedMusicEndMs: Long? = null
+    private var estimatedEndMs: Long? = null
     private var fadeLogged: String? = null
     private var durationLogged: String? = null
     private var finalLogged: String? = null
@@ -49,15 +49,15 @@ internal class AudioTransitionController(
         val from = previous
         if (item != null && from != null && from.id != item.id) {
             diagnostic("Transition: ${from.type} -> ${item.type}; mode=${TransitionPolicy.resolve(from.type, item.type)}; item=${item.contentId}; advancement=$reason; overlap=0 ms")
-            if (from.type == ProgramItemType.MUSIC && item.type != ProgramItemType.MUSIC) {
-                val estimate = estimatedMusicEndMs?.let { (android.os.SystemClock.elapsedRealtime() - it).coerceAtLeast(0) }
+            if (from.type != item.type) {
+                val estimate = estimatedEndMs?.let { (android.os.SystemClock.elapsedRealtime() - it).coerceAtLeast(0) }
                 diagnostic("Estimated scheduler gap: ${estimate?.let { "$it ms" } ?: "indisponível"}; acoustic gap: não medido")
             }
             // Não confundir evento de timeline com gap audível medido no dispositivo.
-            if (from.type != ProgramItemType.MUSIC) diagnostic("Peça concluída por avanço natural=${reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO}; próxima música pré-carregada=${readiness(item).ready}")
+            if (from.type != ProgramItemType.MUSIC) diagnostic("Peça concluída por avanço natural=${reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO}; próximo conteúdo pré-carregado=${readiness(item).ready}")
         }
         previous = item
-        estimatedMusicEndMs = null
+        estimatedEndMs = null
         fadeLogged = null
         finalLogged = null
         durationLogged = null
@@ -75,7 +75,7 @@ internal class AudioTransitionController(
             diagnostic("Espera observada pelo player: ${android.os.SystemClock.elapsedRealtime() - it} ms; item=${player.currentMediaItem?.mediaId}")
             bufferingSince = null
         }
-        if (!player.playWhenReady) estimatedMusicEndMs = null
+        if (!player.playWhenReady) estimatedEndMs = null
         handler.removeCallbacks(tick)
         updateVolume()
         if (player.isPlaying) handler.post(tick)
@@ -86,11 +86,11 @@ internal class AudioTransitionController(
         val following = next()
         if (item.type != ProgramItemType.MUSIC && player.duration > 0 && durationLogged != item.id) {
             durationLogged = item.id
-            diagnostic("Peça=${item.contentId}; duração real=${player.duration} ms; próxima música pré-carregada=${following?.let { readiness(it).ready } == true}")
+            diagnostic("Peça=${item.contentId}; duração real=${player.duration} ms; próximo conteúdo pré-carregado=${following?.let { readiness(it).ready } == true}")
         }
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: item.durationMs
-        if (item.type == ProgramItemType.MUSIC && player.isPlaying && duration > 0) {
-            estimatedMusicEndMs = android.os.SystemClock.elapsedRealtime() + (duration - player.currentPosition).coerceAtLeast(0)
+        if (player.isPlaying && duration > 0) {
+            estimatedEndMs = android.os.SystemClock.elapsedRealtime() + (duration - player.currentPosition).coerceAtLeast(0)
         }
         val envelopePosition = (player.currentPosition - removedPrefixMs(item)).coerceAtLeast(0)
         player.volume = TransitionPolicy.volume(item.type, following?.type, envelopePosition, duration)

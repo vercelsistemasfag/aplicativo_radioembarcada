@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import br.com.radioembarcada.model.ProgramItem
 import br.com.radioembarcada.model.ProgramItemType
+import br.com.radioembarcada.network.news.OfficialNewsDataSource
 
 /** Toca conteúdo genérico. Não consulta catálogo nem decide a ordem musical. */
 @UnstableApi
@@ -49,10 +50,11 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         directory.mkdirs()
         if (!marker.exists()) marker.writeText("")
         cache = SimpleCache(directory, LeastRecentlyUsedCacheEvictor(PlaybackConfiguration.CACHE_BYTES), database)
-        val dataSource = CacheDataSource.Factory().setCache(cache)
-            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory()
+        val http = DefaultHttpDataSource.Factory()
                 .setConnectTimeoutMs(PlaybackConfiguration.CONNECT_TIMEOUT_MS)
-                .setReadTimeoutMs(PlaybackConfiguration.READ_TIMEOUT_MS))
+                .setReadTimeoutMs(PlaybackConfiguration.READ_TIMEOUT_MS)
+        val dataSource = CacheDataSource.Factory().setCache(cache)
+            .setUpstreamDataSourceFactory(http)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val upstream = ProgressiveMediaSource.Factory(dataSource)
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
@@ -60,9 +62,20 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         val local = ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy())
+        val editorial = ProgressiveMediaSource.Factory(dataSource)
+            .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
+            .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy(finiteRetries = true))
+        val officialAudio = CacheDataSource.Factory().setCache(cache)
+            .setUpstreamDataSourceFactory { OfficialNewsDataSource(http.createDataSource()) }
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        val newsAudio = ProgressiveMediaSource.Factory(officialAudio)
+            .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
+            .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy(finiteRetries = true))
         val observedFactory = object : MediaSource.Factory by upstream {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource = readiness.observe(
                 if (mediaItem.localConfiguration?.uri?.scheme == "asset") local.createMediaSource(mediaItem)
+                else if (mediaItem.mediaMetadata.extras?.getString("programType") == "NEWS_DROP") newsAudio.createMediaSource(mediaItem)
+                else if (mediaItem.mediaMetadata.extras?.getString("programType") == "NEWS_INTRO") editorial.createMediaSource(mediaItem)
                 else upstream.createMediaSource(mediaItem))
         }
         loadControl = if (localSource) RadioLoadControl(DefaultLoadControl.Builder()
@@ -110,6 +123,24 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         val media = register(batch)
         player.addMediaItems(media)
     }
+
+    /** Alterar apenas o futuro; conservar item atual, posição, renderer e sessão. */
+    fun replaceUpcoming(tail: List<ProgramItem>) {
+        val start = player.currentMediaItemIndex + 1
+        require(start in 1..entries.size)
+        require((entries[start - 1].program.let(::listOf) + tail).zipWithNext().none { (a, b) ->
+            TransitionPolicy.resolve(a.type, b.type) == TransitionType.FORBIDDEN
+        })
+        require(tail.map { it.id }.distinct().size == tail.size)
+        require(tail.none { next -> entries.take(start).any { it.program.id == next.id } })
+        val previous = entries.drop(start).associateBy { it.program.id }
+        val replacement = tail.map { previous[it.id]?.takeIf { old -> old.program == it } ?: Entry(it, mediaItem(it)) }
+        entries.subList(start, entries.size).clear()
+        entries.addAll(replacement)
+        player.replaceMediaItems(start, player.mediaItemCount, replacement.map { it.media })
+    }
+
+    fun ready(item: ProgramItem): Boolean = readiness.get(item.id).ready
 
     fun updatePreload(@Suppress("UNUSED_PARAMETER") sourceAvailable: Boolean) {
         // O preload pertence à timeline do ExoPlayer; pausa/rede não removem buffers.

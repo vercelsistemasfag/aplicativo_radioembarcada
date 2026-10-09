@@ -5,6 +5,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PreloadPlanTest {
+    @Test fun newsBlockPreparesIntroDropAndPartialFollowingMusicWithoutLoadingLibrary() {
+        assertEquals(45_000L, PreloadPlan.durationMs(1, ProgramItemType.NEWS_INTRO, false))
+        assertEquals(45_000L, PreloadPlan.durationMs(2, ProgramItemType.NEWS_INTRO, false))
+        assertEquals(15_000L, PreloadPlan.durationMs(3, ProgramItemType.NEWS_INTRO, false))
+        assertNull(PreloadPlan.durationMs(4, ProgramItemType.NEWS_INTRO, false))
+        assertEquals(45_000L, PreloadPlan.durationMs(2, ProgramItemType.NEWS_DROP, false))
+    }
     @Test fun preparesTheInsertionAndFollowingMusicBeforeTheCurrentSongEnds() {
         for (type in listOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE)) {
             assertEquals(45_000L, PreloadPlan.durationMs(1, type, false))

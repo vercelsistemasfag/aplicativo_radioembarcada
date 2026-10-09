@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import br.com.radioembarcada.BuildConfig
 import androidx.core.content.ContextCompat
@@ -22,6 +23,9 @@ import androidx.media3.session.SessionError
 import br.com.radioembarcada.RadioApplication
 import br.com.radioembarcada.data.music.MusicProviderException
 import br.com.radioembarcada.model.ConnectionState
+import br.com.radioembarcada.model.ProgramItem
+import br.com.radioembarcada.model.ProgramItemType
+import br.com.radioembarcada.news.NewsConfiguration
 import br.com.radioembarcada.network.NetworkMonitor
 import br.com.radioembarcada.programming.ProgrammingConfiguration
 import br.com.radioembarcada.ui.MainActivity
@@ -49,6 +53,7 @@ class RadioService : MediaLibraryService() {
     private val failedLocalIds = mutableSetOf<String>()
     private val sourceAvailable get() = (application as RadioApplication).musicProvider.isAvailable(network.isConnected)
     private val programming get() = (application as RadioApplication).programming
+    private val news get() = (application as RadioApplication).news
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val playbackIntent = PlaybackIntent()
@@ -66,6 +71,20 @@ class RadioService : MediaLibraryService() {
     private var refillJob: Job? = null
     private var terminalErrors = 0
     private var hasPlayed = false
+    private var newsJob: Job? = null
+    private var newsRefreshAt = 0L
+    private var newsCheckpointAt = 0L
+    private var pendingNewsAfter: String? = null
+    private var newsBlock = emptyList<ProgramItem>()
+    private var lastProgramType: ProgramItemType? = null
+    private var newsReadinessLogged = false
+    private val newsGuard = object : Runnable {
+        override fun run() {
+            maybeNews()
+            if (pendingNewsAfter != null && desiredPlayback) handler.postDelayed(this,
+                if (player.duration > 0 && player.duration - player.currentPosition < 5_000) 250L else PlaybackConfiguration.STATE_POLL_MS)
+        }
+    }
     private val retry = Runnable {
         retryScheduled = false
         if (desiredPlayback && sourceAvailable) {
@@ -89,6 +108,7 @@ class RadioService : MediaLibraryService() {
         override fun run() {
             engine.updatePreload(sourceAvailable)
             maybeRefill()
+            maybeNews()
             publishState()
             handler.postDelayed(this, PlaybackConfiguration.STATE_POLL_MS)
         }
@@ -127,6 +147,10 @@ class RadioService : MediaLibraryService() {
             override fun onEvents(player: Player, events: Player.Events) {
                 // O envelope muda ganho a cada 20 ms: não retransmitir estado da UI nesse ritmo.
                 if (events.size() == 1 && events.contains(Player.EVENT_VOLUME_CHANGED)) return
+                if (!localSource) {
+                    news.tick(SystemClock.elapsedRealtime(), player.isPlaying)
+                    if (player.isPlaying) engine.items.getOrNull(player.currentMediaItemIndex)?.let(news::onPlaying)
+                }
                 if (player.isPlaying) {
                     hasPlayed = true
                     recovering = false
@@ -140,6 +164,7 @@ class RadioService : MediaLibraryService() {
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 // O ExoPlayer trata foco/noisy internamente. Uma pausa deve cancelar intenção/retries.
                 if (!playWhenReady) {
+                    if (!localSource) { news.tick(SystemClock.elapsedRealtime(), false); news.persist() }
                     desiredPlayback = false
                     cancelRecovery()
                     engine.updatePreload(sourceAvailable)
@@ -148,6 +173,17 @@ class RadioService : MediaLibraryService() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 // Executar após o lote de eventos do player, sem reentrância na mudança de timeline.
                 handler.post {
+                    val type = engine.items.getOrNull(player.currentMediaItemIndex)?.type
+                    if (!localSource) {
+                        if (type == ProgramItemType.NEWS_INTRO) {
+                            programming.newsEntered(); pendingNewsAfter = null
+                            logNewsReadiness()
+                        }
+                        if (lastProgramType == ProgramItemType.NEWS_DROP && type == ProgramItemType.MUSIC) {
+                            news.finished(); newsBlock = emptyList(); newsRefreshAt = 0
+                        }
+                        lastProgramType = type
+                    }
                     engine.trimPlayed(); engine.updatePreload(sourceAvailable); maybeRefill()
                     if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", "Provider=${(application as RadioApplication).musicProvider.javaClass.simpleName}; atual=${player.currentMediaItem?.mediaId}; próximo ProgramItem=${engine.items.getOrNull(player.currentMediaItemIndex + 1)?.let { "${it.type}:${it.id}" }}")
                 }
@@ -156,6 +192,19 @@ class RadioService : MediaLibraryService() {
                 if (BuildConfig.DEBUG) Log.e("RadioDiagnostics",
                     "Playback failed: code=${error.errorCodeName}; item=${player.currentMediaItem?.mediaId}; " +
                         "causes=${generateSequence<Throwable>(error) { it.cause }.take(6).joinToString(" -> ") { it.javaClass.simpleName }}")
+                // Uma recuperação/skip da faixa atual não pode disparar a reserva editorial antes da hora.
+                if (pendingNewsAfter == player.currentMediaItem?.mediaId) cancelPendingNews()
+                if (engine.items.getOrNull(player.currentMediaItemIndex)?.type in setOf(ProgramItemType.NEWS_INTRO, ProgramItemType.NEWS_DROP)) {
+                    news.cancel(); programming.newsEntered(); pendingNewsAfter = null; newsBlock = emptyList()
+                    handler.post {
+                        if (!desiredPlayback) return@post
+                        val music = engine.items.indexOfFirstAfter(player.currentMediaItemIndex) { it.type == ProgramItemType.MUSIC }
+                        if (music >= 0) {
+                            player.seekTo(music, 0); player.prepare(); player.play()
+                        } else { engine.clearEndedQueue(); resumeWithCatalog() }
+                    }
+                    return
+                }
                 if (localSource) {
                     if (BuildConfig.DEBUG) Log.w("RadioDiagnostics", "Faixa ignorada: ${player.currentMediaItem?.mediaId}; erro=${error.errorCodeName}")
                     player.currentMediaItem?.mediaId?.let { failedLocalIds.add(it) }
@@ -191,6 +240,8 @@ class RadioService : MediaLibraryService() {
             player.play()
         }
         publishState()
+        handler.removeCallbacks(newsGuard)
+        if (pendingNewsAfter != null) handler.post(newsGuard)
     }
 
     private fun pausePlayback() {
@@ -254,7 +305,7 @@ class RadioService : MediaLibraryService() {
     }
 
     private fun maybeRefill() {
-        if (!desiredPlayback || (!sourceAvailable && !(application as RadioApplication).musicProvider.supportsSavedCatalog) || catalogBlocked || retryScheduled ||
+        if (pendingNewsAfter != null || !desiredPlayback || (!sourceAvailable && !(application as RadioApplication).musicProvider.supportsSavedCatalog) || catalogBlocked || retryScheduled ||
             refillJob?.isActive == true || player.mediaItemCount == 0 ||
             player.mediaItemCount - player.currentMediaItemIndex - 1 > ProgrammingConfiguration.REFILL_REMAINING) return
         refillJob = scope.launch {
@@ -287,6 +338,58 @@ class RadioService : MediaLibraryService() {
                 publishState()
             }
         }
+    }
+
+    /** Planejar somente o futuro; o evento de fim não faz rede nem cria o bloco. */
+    private fun maybeNews() {
+        if (localSource || !::engine.isInitialized || !::network.isInitialized) return
+        val now = SystemClock.elapsedRealtime()
+        news.tick(now, player.isPlaying)
+        if (!desiredPlayback) return
+        if (sourceAvailable && now >= newsRefreshAt && newsJob?.isActive != true && !news.hasReservation) {
+            newsRefreshAt = now + NewsConfiguration.REFRESH_INTERVAL_MS
+            newsJob = scope.launch {
+                val available = news.prefetch()
+                newsRefreshAt = SystemClock.elapsedRealtime() + if (available) NewsConfiguration.REFRESH_INTERVAL_MS else NewsConfiguration.RETRY_INTERVAL_MS
+            }
+        }
+        if (now >= newsCheckpointAt) {
+            news.persist(); newsCheckpointAt = now + 30_000
+        }
+        val current = engine.items.getOrNull(player.currentMediaItemIndex) ?: return
+        val remaining = if (player.duration > 0 && player.duration != C.TIME_UNSET) player.duration - player.currentPosition else return
+        if (pendingNewsAfter == current.id) {
+            if (remaining <= 15_000 && !newsReadinessLogged) { logNewsReadiness(); newsReadinessLogged = true }
+            if (remaining <= NewsConfiguration.PRELOAD_GUARD_MS &&
+                (newsBlock.any { !engine.ready(it) } || !news.reservationStillEligible())) {
+                // Falta áudio real preparado: restaurar a inserção normal ANTES do fim, sem intro sozinha.
+                cancelPendingNews()
+            }
+            return
+        }
+        if (news.hasReservation || refillJob?.isActive == true || current.type in setOf(ProgramItemType.NEWS_INTRO, ProgramItemType.NEWS_DROP) ||
+            remaining <= NewsConfiguration.PRELOAD_GUARD_MS) return
+        val tail = engine.items.drop(player.currentMediaItemIndex + 1)
+        if (tail.none { it.type == ProgramItemType.MUSIC }) return
+        val block = news.reserve(remaining) ?: return
+        val planned = programming.insertNews(tail, block)
+        pendingNewsAfter = current.id; newsBlock = block; newsReadinessLogged = false
+        engine.replaceUpcoming(planned)
+        if (BuildConfig.DEBUG) Log.d("RadioDiagnostics", "News block reserved at safe boundary after=${current.id}; items already in timeline; no seek/stop/prepare")
+        handler.removeCallbacks(newsGuard); handler.post(newsGuard)
+    }
+
+    private fun logNewsReadiness() {
+        if (!BuildConfig.DEBUG) return
+        val music = engine.items.drop(player.currentMediaItemIndex + 1).firstOrNull { it.type == ProgramItemType.MUSIC }
+        Log.d("RadioDiagnostics", "NEWS BLOCK: Intro ready: ${newsBlock.getOrNull(0)?.let(engine::ready) == true}; " +
+            "News ready: ${newsBlock.getOrNull(1)?.let(engine::ready) == true}; Next music ready: ${music?.let(engine::ready) == true}; readiness=MediaPeriod/tracks/buffer")
+    }
+
+    private fun cancelPendingNews() {
+        if (pendingNewsAfter == null) return
+        engine.replaceUpcoming(programming.cancelPendingNews())
+        pendingNewsAfter = null; newsBlock = emptyList(); news.cancel()
     }
 
     private fun scheduleRecovery() {
@@ -326,6 +429,7 @@ class RadioService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
     override fun onTaskRemoved(rootIntent: Intent?) { if (!desiredPlayback) stopSelf() }
     override fun onDestroy() {
+        if (!localSource) { news.tick(SystemClock.elapsedRealtime(), false); news.abandonTimeline(); news.persist() }
         network.stop()
         handler.removeCallbacksAndMessages(null)
         pendingInitial?.cancel(false)
@@ -396,3 +500,6 @@ class RadioService : MediaLibraryService() {
         private const val ROOT_ID = "radio_root"
     }
 }
+
+private inline fun <T> List<T>.indexOfFirstAfter(index: Int, predicate: (T) -> Boolean): Int =
+    (index + 1 until size).firstOrNull { predicate(this[it]) } ?: -1

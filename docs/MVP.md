@@ -19,6 +19,12 @@ TransitionPolicy/AudioTransitionController aplicam saída de MUSIC nos últimos 
 A última configuração válida é salva privadamente; falhas usam a versão salva ou deixam a rádio tocando somente músicas, com refresh/retry controlados. IDs de ocorrência distintos permitem repetir peças na fila com cache compartilhado por conteúdo. Media3, sessão contínua e controles externos somente Play/Pause permanecem. O APK padrão não contém MP3 e o workflow existente continua gerando o Artifact. Não há novas telas nem regras comerciais de anúncios.
 
 
+## Atualização autorizada — notícias editoriais
+
+RemoteNewsProvider é separado dos provedores musicais/institucionais: RSS Radioagência Nacional → NewsItem → NEWS_INTRO/NEWS_DROP → programação → mesmo Media3/cache/sessão. Intervalo de 30 minutos ativos (pausa/foco/buffering não contam), candidato resolvido antecipadamente, notícias das últimas 24 h com histórico de 100 IDs e crédito da fonte. A página oficial é consultada quando não há enclosure; MP3/redirects devem permanecer em domínios EBC e links indisponíveis são ignorados.
+
+Uma reserva editorial substitui a inserção normal de uma fronteira futura, adiando-a sem consumir seu ciclo/bag. Intro → notícia → música é indivisível; cada item termina integralmente, com preload oficial e readiness comprovada. Se o áudio não estiver preparado antes do boundary, a fila normal é restaurada; falhas editoriais não encerram a rádio. Histórico, último horário e relógio ativo são persistidos privadamente. DEBUG aceita intervalo de 3/5 minutos para teste, release mantém 30 minutos. Não há nova tela, backend ou áudio empacotado. Workflow existente valida testes/lint/APK e disponibiliza o Artifact.
+
 ## Visão
 Aplicativo Android multi-tenant para rádios 24/7 voltadas a plataformas locais de mobilidade.
 

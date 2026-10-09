@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      news_interval_debug_minutes:
+        description: 'Notícias DEBUG: 0 = 30 minutos; teste opcional 3 ou 5 minutos'
+        type: choice
+        default: '0'
+        options: ['0', '3', '5']
 
 permissions:
   contents: read
@@ -43,7 +49,9 @@ jobs:
       - name: Android lint
         run: ./gradlew lintDebug --warning-mode all --max-workers=2
       - name: Assemble debug APK
-        run: ./gradlew assembleDebug --warning-mode all --max-workers=2
+        env:
+          NEWS_INTERVAL_DEBUG: ${{ inputs.news_interval_debug_minutes || '0' }}
+        run: ./gradlew assembleDebug -PnewsIntervalDebugMinutes="$NEWS_INTERVAL_DEBUG" --warning-mode all --max-workers=2
       - name: Confirm debug APK
         run: |
           test -s app/build/outputs/apk/debug/app-debug.apk

@@ -5,6 +5,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TransitionPolicyTest {
+    @Test fun newsBlockHasOneExplicitShortToShortExceptionAndOnlyMusicHasFifteenSecondExit() {
+        assertEquals(TransitionType.MUSIC_TO_INSERT, TransitionPolicy.resolve(ProgramItemType.MUSIC, ProgramItemType.NEWS_INTRO))
+        assertEquals(TransitionType.HARD_TRANSITION, TransitionPolicy.resolve(ProgramItemType.NEWS_INTRO, ProgramItemType.NEWS_DROP))
+        assertEquals(TransitionType.INSERT_TO_MUSIC, TransitionPolicy.resolve(ProgramItemType.NEWS_DROP, ProgramItemType.MUSIC))
+        assertEquals(TransitionType.FORBIDDEN, TransitionPolicy.resolve(ProgramItemType.NEWS_INTRO, ProgramItemType.STATION_ID))
+        assertEquals(TransitionType.FORBIDDEN, TransitionPolicy.resolve(ProgramItemType.NEWS_DROP, ProgramItemType.JINGLE))
+        assertEquals(TransitionType.FORBIDDEN, TransitionPolicy.resolve(ProgramItemType.MUSIC, ProgramItemType.NEWS_DROP))
+        assertEquals(TransitionPolicy.gain(ProgramItemType.NEWS_INTRO), TransitionPolicy.volume(ProgramItemType.NEWS_INTRO,
+            ProgramItemType.NEWS_DROP, 8_999, 9_000), 0f)
+        assertEquals(TransitionPolicy.gain(ProgramItemType.NEWS_DROP), TransitionPolicy.volume(ProgramItemType.NEWS_DROP,
+            ProgramItemType.MUSIC, 89_999, 90_000), 0f)
+    }
     @Test fun musicHasFifteenSecondSmoothExitOnlyBeforeAnInsertion() {
         assertEquals(15_000L, TransitionConfiguration.MUSIC_FADE_OUT_MS)
         val values = (165_000L..180_000L step 100).map {
@@ -54,7 +66,7 @@ class TransitionPolicyTest {
     }
 
     @Test fun everyShortToShortCombinationIsForbiddenAndMissingPoolsAllowNaturalMusic() {
-        val shorts = ProgramItemType.entries.filter { it != ProgramItemType.MUSIC }
+        val shorts = listOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE, ProgramItemType.ADVERTISEMENT, ProgramItemType.ANNOUNCEMENT)
         for (from in shorts) for (to in shorts) assertEquals(TransitionType.FORBIDDEN, TransitionPolicy.resolve(from, to))
         assertEquals(TransitionType.HARD_TRANSITION, TransitionPolicy.resolve(ProgramItemType.MUSIC, ProgramItemType.MUSIC))
     }

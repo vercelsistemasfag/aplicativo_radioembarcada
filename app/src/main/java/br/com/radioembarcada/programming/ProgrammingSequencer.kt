@@ -25,9 +25,15 @@ internal class ProgrammingSequencer(private val diagnostic: (String) -> Unit = {
         jingles = ShuffleBag(random)
     }
 
-    fun interleave(music: List<ProgramItem>, configuration: StationProgramming?): List<ProgramItem> {
+    fun interleave(music: List<ProgramItem>, configuration: StationProgramming?,
+        alreadyScheduled: List<ProgramItem> = emptyList()): List<ProgramItem> {
         require(music.all { it.type == ProgramItemType.MUSIC })
-        if (configuration == null) return music
+        require(alreadyScheduled.size <= music.size && alreadyScheduled.all {
+            it.type in setOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE)
+        })
+        if (configuration == null) return buildList {
+            music.forEachIndexed { index, track -> add(track); alreadyScheduled.getOrNull(index)?.let(::add) }
+        }
         if (station != configuration.stationId) { startSession(); station = configuration.stationId }
         if (version != configuration.version) {
             stations.invalidate()
@@ -40,8 +46,15 @@ internal class ProgrammingSequencer(private val diagnostic: (String) -> Unit = {
             insertionPosition = 0
         }
         return buildList {
-            music.forEach { track ->
+            music.forEachIndexed { index, track ->
                 add(track)
+                alreadyScheduled.getOrNull(index)?.let {
+                    // Peça adiada por NEWS já consumiu seu slot/bag ao ser reservada antes.
+                    // Reutilizar sem sortear nem avançar novamente o ciclo.
+                    add(it)
+                    diagnostic("Inserção normal adiada retomada: ${it.type}; item=${it.id}; ciclo preservado")
+                    return@forEachIndexed
+                }
                 val requested = pattern[insertionPosition]
                 diagnostic("Fila: troca ${insertionPosition + 1}/${pattern.size}; item=${track.id}; inserção=$requested")
                 val selected = when (requested) {

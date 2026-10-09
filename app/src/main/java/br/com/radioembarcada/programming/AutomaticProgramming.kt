@@ -19,8 +19,27 @@ class AutomaticProgramming(private val provider: MusicProvider,
     private var revision: Long? = null
     private var page = 0
     private val recentlyScheduled = ArrayDeque<String>()
+    private val deferredInserts = ArrayDeque<ProgramItem>()
+    private var newsRollback: Pair<List<ProgramItem>, List<ProgramItem>>? = null
 
-    fun startSession() = sequencer.startSession()
+    fun startSession() { sequencer.startSession(); deferredInserts.clear(); newsRollback = null }
+
+    fun insertNews(upcoming: List<ProgramItem>, block: List<ProgramItem>): List<ProgramItem> {
+        check(newsRollback == null)
+        val plan = NewsQueuePlanner.insert(upcoming, block)
+        newsRollback = upcoming.toList() to deferredInserts.toList()
+        plan.deferred.asReversed().forEach(deferredInserts::addFirst)
+        return plan.upcoming
+    }
+
+    fun cancelPendingNews(): List<ProgramItem> {
+        val rollback = checkNotNull(newsRollback)
+        deferredInserts.clear(); deferredInserts.addAll(rollback.second)
+        newsRollback = null
+        return rollback.first
+    }
+
+    fun newsEntered() { newsRollback = null }
 
     suspend fun nextBatch(previous: ProgramItem? = null, queuedIds: Set<String> = emptySet(),
         excludedIds: Set<String> = emptySet(), prefer: (ProgramItem) -> Boolean = { false }): List<ProgramItem> {
@@ -30,7 +49,8 @@ class AutomaticProgramming(private val provider: MusicProvider,
         val musicPrevious = previous?.takeIf { it.type == ProgramItemType.MUSIC } ?: lastMusic
         val music = nextMusicBatch(musicPrevious, queuedIds, excludedIds, prefer)
         lastMusic = music.lastOrNull() ?: lastMusic
-        return sequencer.interleave(music, configuration)
+        val retained = List(minOf(deferredInserts.size, music.size)) { deferredInserts.removeFirst() }
+        return sequencer.interleave(music, configuration, alreadyScheduled = retained)
     }
 
     private suspend fun nextMusicBatch(previous: ProgramItem?, queuedIds: Set<String>,

@@ -16,6 +16,8 @@ object TransitionConfiguration {
     const val JINGLE_GAIN = 0.80f
     const val ADVERTISEMENT_GAIN = 0.80f
     const val ANNOUNCEMENT_GAIN = 0.80f
+    const val NEWS_INTRO_GAIN = 0.80f
+    const val NEWS_DROP_GAIN = 0.90f
 }
 
 enum class TransitionType { MUSIC_TO_INSERT, INSERT_TO_MUSIC, HARD_TRANSITION, FORBIDDEN }
@@ -23,6 +25,10 @@ enum class TransitionType { MUSIC_TO_INSERT, INSERT_TO_MUSIC, HARD_TRANSITION, F
 /** A regra corrigida não sobrepõe áudios nem antecipa o fim de qualquer item. */
 object TransitionPolicy {
     fun resolve(current: ProgramItemType, next: ProgramItemType): TransitionType = when {
+        current == ProgramItemType.NEWS_INTRO && next == ProgramItemType.NEWS_DROP -> TransitionType.HARD_TRANSITION
+        current in setOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE, ProgramItemType.ADVERTISEMENT, ProgramItemType.ANNOUNCEMENT) &&
+            next == ProgramItemType.NEWS_INTRO -> TransitionType.HARD_TRANSITION
+        next == ProgramItemType.NEWS_DROP -> TransitionType.FORBIDDEN
         current == ProgramItemType.MUSIC && next != ProgramItemType.MUSIC -> TransitionType.MUSIC_TO_INSERT
         current != ProgramItemType.MUSIC && next == ProgramItemType.MUSIC -> TransitionType.INSERT_TO_MUSIC
         current != ProgramItemType.MUSIC && next != ProgramItemType.MUSIC -> TransitionType.FORBIDDEN
@@ -35,6 +41,8 @@ object TransitionPolicy {
         ProgramItemType.JINGLE -> TransitionConfiguration.JINGLE_GAIN
         ProgramItemType.ADVERTISEMENT -> TransitionConfiguration.ADVERTISEMENT_GAIN
         ProgramItemType.ANNOUNCEMENT -> TransitionConfiguration.ANNOUNCEMENT_GAIN
+        ProgramItemType.NEWS_INTRO -> TransitionConfiguration.NEWS_INTRO_GAIN
+        ProgramItemType.NEWS_DROP -> TransitionConfiguration.NEWS_DROP_GAIN
     }
 
     fun volume(type: ProgramItemType, next: ProgramItemType?, positionMs: Long, durationMs: Long): Float {

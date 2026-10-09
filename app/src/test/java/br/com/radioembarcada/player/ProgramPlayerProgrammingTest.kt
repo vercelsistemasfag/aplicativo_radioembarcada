@@ -23,6 +23,24 @@ import org.robolectric.annotation.LooperMode
 @Config(sdk = [28], application = Application::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 class ProgramPlayerProgrammingTest {
+    @Test fun changingOnlyFutureTimelinePreservesCurrentMusicAndNewsMetadata() {
+        val engine = ProgramPlayer(RuntimeEnvironment.getApplication())
+        try {
+            val current = br.com.radioembarcada.model.ProgramItem("current", ProgramItemType.MUSIC, "Music", "https://example.org/current.mp3", 180_000)
+            val next = current.copy(id = "next", audioUrl = "https://example.org/next.mp3")
+            engine.player.setMediaItems(engine.register(listOf(current, next)))
+            val intro = current.copy(id = "intro", type = ProgramItemType.NEWS_INTRO, title = "Notícias")
+            val drop = current.copy(id = "drop", type = ProgramItemType.NEWS_DROP, title = "Notícia", artist = "Radioagência Nacional", source = "Radioagência Nacional")
+            engine.replaceUpcoming(listOf(intro, drop, next))
+            assertEquals("current", engine.player.currentMediaItem?.mediaId)
+            assertEquals(0, engine.player.currentMediaItemIndex)
+            assertEquals(0L, engine.player.currentPosition)
+            assertEquals(listOf("current", "intro", "drop", "next"), engine.items.map { it.id })
+            assertEquals("Radioagência Nacional", engine.player.getMediaItemAt(2).mediaMetadata.artist)
+            assertEquals("Radioagência Nacional", engine.player.getMediaItemAt(2).mediaMetadata.extras?.getString("source"))
+        } finally { engine.release() }
+    }
+
     @Test fun allSevenStationsUseIdenticalMediaItemPipelineGainAndCachePolicy() {
         val config = RemoteProgrammingParser.parse(checkNotNull(javaClass.getResource("/programming-v4.json")).readText())
         val engine = ProgramPlayer(RuntimeEnvironment.getApplication())

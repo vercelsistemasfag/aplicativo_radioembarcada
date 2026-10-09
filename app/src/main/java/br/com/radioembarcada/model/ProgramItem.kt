@@ -1,6 +1,6 @@
 package br.com.radioembarcada.model
 
-enum class ProgramItemType { MUSIC, STATION_ID, JINGLE, ADVERTISEMENT, ANNOUNCEMENT }
+enum class ProgramItemType { MUSIC, STATION_ID, JINGLE, ADVERTISEMENT, ANNOUNCEMENT, NEWS_INTRO, NEWS_DROP }
 
 /** Conteúdo genérico da programação; o player não conhece o catálogo de origem. */
 data class ProgramItem(

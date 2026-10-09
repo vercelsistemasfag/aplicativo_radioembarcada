@@ -244,6 +244,46 @@ class RadioSessionCallbackTest {
         } finally { control.release() }
     }
 
+    @Test fun newsIntroAndDropPlayFullyWithPlayPauseOnlyAndOfficialMetadata() {
+        val items = listOf(item("music-before").copy(durationMs = 30_000),
+            item("news-intro", ProgramItemType.NEWS_INTRO).copy(durationMs = 9_000, title = "Notícias", artist = "Rádio Alce"),
+            item("news-drop", ProgramItemType.NEWS_DROP).copy(durationMs = 90_000, title = "Título da notícia", artist = "Radioagência Nacional"),
+            item("music-after").copy(durationMs = 30_000))
+        val ended = mutableMapOf<String, Long>()
+        player.addListener(object : Player.Listener {
+            override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                    ended[oldPosition.mediaItem!!.mediaId] = oldPosition.positionMs
+                    assertEquals(0L, newPosition.positionMs)
+                }
+            }
+        })
+        val envelope = AudioTransitionController(player,
+            current = { items.find { it.id == player.currentMediaItem?.mediaId } },
+            next = { items.getOrNull(player.currentMediaItemIndex + 1) }, readiness = { PlaybackReadiness.Snapshot() })
+        try {
+            player.setMediaSources(items.map(::source)); player.prepare()
+            advance(player).untilState(Player.STATE_READY)
+            val controller = connect(notification = true)
+            controller.play()
+            advance(player).untilPosition(1, 3_000)
+            controller.pause(); runMainLooperUntil { !player.playWhenReady }
+            assertEquals("news-intro", player.currentMediaItem?.mediaId)
+            assertRadioCommands(controller)
+            controller.play()
+            advance(player).untilPosition(2, 1_000)
+            runMainLooperUntil { controller.mediaMetadata.artist == "Radioagência Nacional" }
+            assertEquals("Título da notícia", controller.mediaMetadata.title)
+            assertRadioCommands(controller)
+            controller.pause(); runMainLooperUntil { !player.playWhenReady }
+            assertEquals("news-drop", player.currentMediaItem?.mediaId)
+            controller.play()
+            advance(player).untilState(Player.STATE_ENDED)
+            assertEquals(9_000L, ended["news-intro"])
+            assertEquals(90_000L, ended["news-drop"])
+        } finally { envelope.release() }
+    }
+
     @Test fun naturalEndContinuesThroughMusicStationIdAndJingleWithoutExternalSeek() = runBlocking {
         val provider = object : MusicProvider {
             override val providesCompleteCatalog = true

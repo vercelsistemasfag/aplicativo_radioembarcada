@@ -24,6 +24,32 @@ import org.robolectric.annotation.LooperMode
 @Config(sdk = [28], application = Application::class)
 @LooperMode(LooperMode.Mode.PAUSED)
 class PlaylistPreloadTest {
+    @Test fun editorialBlockHasRealPreparedIntroAndDropBeforeMusicEnds() {
+        val items = listOf(program("music", ProgramItemType.MUSIC, 60_000),
+            program("news-intro", ProgramItemType.NEWS_INTRO, 9_000),
+            program("news-drop", ProgramItemType.NEWS_DROP, 90_000),
+            program("following-music", ProgramItemType.MUSIC, 60_000))
+        val readiness = PlaybackReadiness()
+        val control = RadioLoadControl(playlistPreload = true).apply { currentAudio = readiness::get }
+        val player = ExoPlayer.Builder(RuntimeEnvironment.getApplication(),
+            RenderersFactory { _, _, _, _, _ -> arrayOf(FakeRenderer(C.TRACK_TYPE_AUDIO)) })
+            .setClock(FakeClock(true)).setLoadControl(control).build()
+        player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { control.currentMediaId = mediaItem?.mediaId }
+        })
+        try {
+            player.setPreloadConfiguration(ExoPlayer.PreloadConfiguration(45_000_000))
+            player.setMediaSources(items.map { readiness.observe(source(it)) }); player.prepare()
+            advance(player).untilState(Player.STATE_READY)
+            player.play(); advance(player).untilPosition(0, 1_000)
+            player.pause(); advance(player).untilPendingCommandsAreFullyHandled()
+            assertEquals("music", player.currentMediaItem?.mediaId)
+            assertTrue("Intro deve ter MediaPeriod/trilha/buffer: ${readiness.get("news-intro")}", readiness.get("news-intro").ready)
+            assertTrue("Drop deve ter MediaPeriod/trilha/buffer: ${readiness.get("news-drop")}", readiness.get("news-drop").ready)
+            assertTrue("Música seguinte deve ter preload iniciado", readiness.get("following-music").started)
+        } finally { player.release() }
+    }
+
     private fun program(id: String, type: ProgramItemType, duration: Long) =
         ProgramItem(id, type, id, "https://example.invalid/$id", duration)
 

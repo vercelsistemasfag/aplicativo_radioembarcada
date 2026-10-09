@@ -17,6 +17,8 @@ val jamendoClientId = providers.environmentVariable("JAMENDO_CLIENT_ID").orNull
 
 // Opt-in local preserva os arquivos no computador; o build remoto não empacota music/.
 val useLocalMusic = providers.gradleProperty("useLocalMusic").map { it.toBoolean() }.getOrElse(false)
+val newsIntervalDebugMinutes = providers.gradleProperty("newsIntervalDebugMinutes").map { it.toLong() }.getOrElse(0)
+require(newsIntervalDebugMinutes in listOf(0L, 3L, 5L)) { "newsIntervalDebugMinutes aceita 0, 3 ou 5" }
 
 android {
     namespace = "br.com.radioembarcada"
@@ -29,6 +31,7 @@ android {
         versionName = "0.5.0"
         buildConfigField("String", "JAMENDO_CLIENT_ID", JsonOutput.toJson(jamendoClientId))
         buildConfigField("boolean", "USE_LOCAL_MUSIC", useLocalMusic.toString())
+        buildConfigField("long", "NEWS_INTERVAL_DEBUG", "0L")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -36,6 +39,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
+    buildTypes.getByName("debug").buildConfigField("long", "NEWS_INTERVAL_DEBUG", "${newsIntervalDebugMinutes * 60_000}L")
     testOptions { unitTests.isIncludeAndroidResources = true }
     if (!useLocalMusic) sourceSets.getByName("main").assets.setSrcDirs(
         listOf(layout.buildDirectory.dir("generated/remoteAssets")))

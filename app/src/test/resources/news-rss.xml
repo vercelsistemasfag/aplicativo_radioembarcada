@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel><title>Últimas Notícias</title>
+    <item><guid>latest</guid><title>Notícia mais recente</title>
+      <link>https://agenciabrasil.ebc.com.br/radioagencia-nacional/economia/audio/noticia</link>
+      <pubDate>Fri, 09 Oct 2026 12:00:00 -0300</pubDate><category>Economia</category>
+      <description><![CDATA[<p>Descrição</p><span class="hms hms-format-m-ss">2:25</span>]]></description>
+    </item>
+    <item><guid>enclosure</guid><title>Áudio direto</title>
+      <link>https://agenciabrasil.ebc.com.br/radioagencia-nacional/saude/audio/direto</link>
+      <pubDate>Fri, 09 Oct 2026 11:00:00 -0300</pubDate>
+      <enclosure url="https://audios.ebc.com.br/news.mp3" type="audio/mpeg" length="1000"/>
+      <itunes:duration>00:01:30</itunes:duration><category>Saúde</category>
+    </item>
+    <item><guid>external</guid><title>Sem áudio oficial</title>
+      <link>https://agenciabrasil.ebc.com.br/radioagencia-nacional/audio/sem-audio</link>
+      <pubDate>Fri, 09 Oct 2026 10:00:00 -0300</pubDate>
+      <enclosure url="https://unofficial.example/news.mp3" type="audio/mpeg"/>
+    </item>
+    <item><guid>invalid</guid><title>Sem data válida</title><link>https://agenciabrasil.ebc.com.br/noticia</link></item>
+  </channel>
+</rss>
