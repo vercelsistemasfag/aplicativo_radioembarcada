@@ -11,10 +11,22 @@ class TransitionPolicyTest {
             TransitionPolicy.volume(ProgramItemType.MUSIC, ProgramItemType.STATION_ID, it, 180_000)
         }
         assertEquals(TransitionConfiguration.MUSIC_GAIN, values.first(), 0.00001f)
-        assertEquals(0f, values.last(), 0.00001f)
+        assertEquals(TransitionConfiguration.MUSIC_GAIN * TransitionConfiguration.MUSIC_EXIT_FLOOR, values.last(), 0.00001f)
         assertTrue(values.zipWithNext().all { (a,b) -> a >= b })
-        assertEquals(TransitionConfiguration.MUSIC_GAIN / 2,
+        assertEquals(TransitionConfiguration.MUSIC_GAIN * (1 + TransitionConfiguration.MUSIC_EXIT_FLOOR) / 2,
             TransitionPolicy.volume(ProgramItemType.MUSIC, ProgramItemType.JINGLE, 172_500, 180_000), 0.00001f)
+    }
+
+    @Test fun finalThreeSecondsNeverBecomeDigitalOrPerceptualMute() {
+        for (type in listOf(ProgramItemType.STATION_ID, ProgramItemType.JINGLE)) {
+            for (remaining in 1L..3_000L) {
+                assertTrue(TransitionPolicy.volume(ProgramItemType.MUSIC, type, 180_000 - remaining, 180_000) >=
+                    TransitionConfiguration.MUSIC_GAIN * TransitionConfiguration.MUSIC_EXIT_FLOOR)
+            }
+            assertTrue(TransitionPolicy.volume(type, ProgramItemType.MUSIC, 0, 8_000) > 0f)
+            assertEquals(TransitionPolicy.gain(type), TransitionPolicy.volume(type, ProgramItemType.MUSIC,
+                TransitionConfiguration.INSERT_ENTRY_MS, 8_000), 0.00001f)
+        }
     }
 
     @Test fun eightTwelveAndTwentySecondInsertsKeepTheirGainThroughTheirEntireEnding() {
@@ -34,7 +46,8 @@ class TransitionPolicyTest {
         assertTrue(TransitionConfiguration.MUSIC_ENTRY_MS in 50..200)
         assertTrue(TransitionConfiguration.STATION_ID_GAIN < TransitionConfiguration.MUSIC_GAIN)
         for (type in ProgramItemType.entries) {
-            assertEquals(0f, TransitionPolicy.volume(type, ProgramItemType.MUSIC, 0, 20_000), 0f)
+            assertEquals(if (type == ProgramItemType.MUSIC) 0f else TransitionPolicy.gain(type) * TransitionConfiguration.INSERT_ENTRY_FLOOR,
+                TransitionPolicy.volume(type, ProgramItemType.MUSIC, 0, 20_000), 0f)
             assertEquals(TransitionPolicy.gain(type), TransitionPolicy.volume(type, ProgramItemType.MUSIC, 400, 20_000), 0.00001f)
             assertTrue(TransitionPolicy.gain(type) in 0f..1f)
         }

@@ -211,7 +211,7 @@ class RadioSessionCallbackTest {
         val control = AudioTransitionController(player,
             current = { items.find { it.id == player.currentMediaItem?.mediaId } },
             next = { items.getOrNull(player.currentMediaItemIndex + 1) },
-            prepared = { true }, diagnostic = logs::add)
+            readiness = { PlaybackReadiness.Snapshot() }, diagnostic = logs::add)
         val boundaries = mutableListOf<Pair<String?, Long>>()
         player.addListener(object : Player.Listener {
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo,

@@ -5,7 +5,9 @@ import br.com.radioembarcada.model.ProgramItemType
 /** Todos os ganhos/tempos são de envelope; não normalizam loudness do arquivo original. */
 object TransitionConfiguration {
     const val MUSIC_FADE_OUT_MS = 15_000L
-    const val INSERT_ENTRY_MS = 300L
+    const val INSERT_ENTRY_MS = 150L
+    const val MUSIC_EXIT_FLOOR = 0.10f
+    const val INSERT_ENTRY_FLOOR = 0.25f
     const val MUSIC_ENTRY_MS = 100L
     const val UPDATE_MS = 20L
     const val IDLE_UPDATE_MS = 500L
@@ -38,10 +40,13 @@ object TransitionPolicy {
     fun volume(type: ProgramItemType, next: ProgramItemType?, positionMs: Long, durationMs: Long): Float {
         val rampMs = if (type == ProgramItemType.MUSIC) TransitionConfiguration.MUSIC_ENTRY_MS
             else TransitionConfiguration.INSERT_ENTRY_MS
-        val entry = smooth(positionMs.toFloat() / rampMs)
+        val progress = smooth(positionMs.toFloat() / rampMs)
+        val entry = if (type == ProgramItemType.MUSIC) progress else
+            TransitionConfiguration.INSERT_ENTRY_FLOOR + (1f - TransitionConfiguration.INSERT_ENTRY_FLOOR) * progress
         val exit = if (next != null && durationMs > 0 &&
             resolve(type, next) == TransitionType.MUSIC_TO_INSERT) {
-            smooth((durationMs - positionMs).toFloat() / minOf(TransitionConfiguration.MUSIC_FADE_OUT_MS, durationMs))
+            TransitionConfiguration.MUSIC_EXIT_FLOOR + (1f - TransitionConfiguration.MUSIC_EXIT_FLOOR) *
+                smooth((durationMs - positionMs).toFloat() / minOf(TransitionConfiguration.MUSIC_FADE_OUT_MS, durationMs))
         } else 1f
         return gain(type) * entry * exit
     }

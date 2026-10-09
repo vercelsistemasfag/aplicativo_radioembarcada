@@ -13,6 +13,7 @@ object PlaybackConfiguration {
     const val MAX_BUFFER_MS = 90_000
     const val START_BUFFER_MS = 1_500
     const val REBUFFER_MS = 3_000
+    const val PRELOAD_START_BUFFER_MS = 5_000
     const val NEXT_TRACK_PRELOAD_MS = 45_000L
     const val SECOND_TRACK_PRELOAD_MS = 15_000L
     const val CACHE_BYTES = 300L * 1024 * 1024

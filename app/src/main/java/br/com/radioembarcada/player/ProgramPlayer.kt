@@ -18,9 +18,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.preload.PreloadManagerListener
-import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
-import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import br.com.radioembarcada.model.ProgramItem
 import br.com.radioembarcada.model.ProgramItemType
 
@@ -30,13 +27,10 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
     private val diagnostic: (String) -> Unit = {}) {
     private data class Entry(val program: ProgramItem, val media: MediaItem)
     private val entries = mutableListOf<Entry>()
-    private var baseRanking = 0
-    private var currentRanking = 0
-    private var preloadEnabled = false
-    private val database = StandaloneDatabaseProvider(context)
+        private val database = StandaloneDatabaseProvider(context)
     private val cache: SimpleCache
-    private val preload: DefaultPreloadManager
-    private val preparedItems = mutableSetOf<String>()
+    private val readiness = PlaybackReadiness(diagnostic)
+    private val loadControl: RadioLoadControl
     private val transitions: AudioTransitionController
     val player: ExoPlayer
     val items: List<ProgramItem> get() = entries.map { it.program }
@@ -65,44 +59,33 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         val local = ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy())
-        var manager: DefaultPreloadManager? = null
-        val managedFactory = object : MediaSource.Factory by upstream {
-            override fun createMediaSource(mediaItem: MediaItem): MediaSource =
-                manager?.getMediaSource(mediaItem) ?: if (mediaItem.localConfiguration?.uri?.scheme == "asset")
-                    local.createMediaSource(mediaItem) else upstream.createMediaSource(mediaItem)
+        val observedFactory = object : MediaSource.Factory by upstream {
+            override fun createMediaSource(mediaItem: MediaItem): MediaSource = readiness.observe(
+                if (mediaItem.localConfiguration?.uri?.scheme == "asset") local.createMediaSource(mediaItem)
+                else upstream.createMediaSource(mediaItem))
         }
-        val control = TargetPreloadStatusControl<Int> { ranking ->
-            if (!preloadEnabled) null else PreloadPlan.durationMs(ranking - currentRanking,
-                entries.getOrNull(currentRanking - baseRanking + 1)?.program?.type, localSource)?.let {
-                DefaultPreloadManager.Status(DefaultPreloadManager.Status.STAGE_LOADED_FOR_DURATION_MS, it)
-            }
-        }
-
-        val loadControl = if (localSource) RadioLoadControl(DefaultLoadControl.Builder()
+        loadControl = if (localSource) RadioLoadControl(DefaultLoadControl.Builder()
             .setBufferDurationsMs(PlaybackConfiguration.LOCAL_MIN_BUFFER_MS, PlaybackConfiguration.LOCAL_MAX_BUFFER_MS,
                 PlaybackConfiguration.LOCAL_START_BUFFER_MS, PlaybackConfiguration.LOCAL_REBUFFER_MS)
-            .setPrioritizeTimeOverSizeThresholds(true).build(), localSource = true) else RadioLoadControl()
-        val builder = DefaultPreloadManager.Builder(context, control)
-            .setMediaSourceFactory(managedFactory).setLoadControl(loadControl)
-        preload = builder.build()
-        manager = preload
-        preload.addListener(object : PreloadManagerListener {
-            override fun onCompleted(mediaItem: MediaItem) {
-                preparedItems += mediaItem.mediaId
-                diagnostic("Preload concluído: item=${mediaItem.mediaId}; alvo preparado ou fim do conteúdo")
-            }
-        })
-        player = builder.buildExoPlayer().apply {
+            .setPrioritizeTimeOverSizeThresholds(true).build(), localSource = true, playlistPreload = true) else RadioLoadControl(playlistPreload = true)
+        loadControl.currentAudio = readiness::get
+        player = ExoPlayer.Builder(context).setMediaSourceFactory(observedFactory).setLoadControl(loadControl).build().apply {
+            setPreloadConfiguration(ExoPlayer.PreloadConfiguration(PlaybackConfiguration.NEXT_TRACK_PRELOAD_MS * 1_000))
             setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA)
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             setHandleAudioBecomingNoisy(true)
             setWakeMode(if (localSource) C.WAKE_MODE_LOCAL else C.WAKE_MODE_NETWORK)
         }
+        player.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                loadControl.currentMediaId = mediaItem?.mediaId
+            }
+        })
         transitions = AudioTransitionController(player,
             current = { entries.getOrNull(player.currentMediaItemIndex)?.program
                 ?.takeIf { it.id == player.currentMediaItem?.mediaId } },
             next = { entries.getOrNull(player.currentMediaItemIndex + 1)?.program },
-            prepared = { it.id in preparedItems }, diagnostic = diagnostic)
+            readiness = { readiness.get(it.id) }, diagnostic = diagnostic)
     }
 
     fun isCached(item: ProgramItem): Boolean = cache.getCachedSpans(audioCacheKey(item))
@@ -115,7 +98,6 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         return batch.map { program ->
             require(entries.none { it.program.id == program.id }) { "Conteúdo já presente na fila" }
             val media = mediaItem(program)
-            preload.add(media, baseRanking + entries.size)
             entries += Entry(program, media)
             media
         }
@@ -123,47 +105,29 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
 
     fun append(batch: List<ProgramItem>) {
         val media = register(batch)
-        player.addMediaSources(media.map { checkNotNull(preload.getMediaSource(it)) })
+        player.addMediaItems(media)
     }
 
-    fun updatePreload(sourceAvailable: Boolean) {
-        val ranking = baseRanking + player.currentMediaItemIndex.coerceAtLeast(0)
-        // Não descartar áudio preparado ao pausar/perder rede: apenas dois itens futuros.
-        val enabled = preloadEnabled || sourceAvailable && player.playWhenReady && player.isPlaying &&
-            PlaybackConfiguration.canPreload(localSource, player.totalBufferedDuration,
-                if (player.duration == C.TIME_UNSET) C.TIME_UNSET else player.duration - player.currentPosition)
-        if (ranking != currentRanking || enabled != preloadEnabled) {
-            currentRanking = ranking
-            preloadEnabled = enabled
-            preload.setCurrentPlayingIndex(ranking)
-            preload.invalidate()
-        }
+    fun updatePreload(@Suppress("UNUSED_PARAMETER") sourceAvailable: Boolean) {
+        // O preload pertence à timeline do ExoPlayer; pausa/rede não removem buffers.
+        loadControl.currentMediaId = player.currentMediaItem?.mediaId
     }
 
     /** Remover somente faixas já tocadas; manter o item/posição/buffer atuais. */
     fun trimPlayed() {
         val count = player.currentMediaItemIndex.coerceAtLeast(0)
         if (count == 0 || count >= entries.size) return
-        val old = entries.take(count)
         repeat(count) { entries.removeAt(0) }
-        baseRanking += count
         player.removeMediaItems(0, count)
-        old.forEach { preload.remove(it.media); preparedItems.remove(it.program.id) }
     }
 
     fun clearEndedQueue() {
-        preparedItems.clear()
-        preloadEnabled = false
         player.clearMediaItems()
-        entries.forEach { preload.remove(it.media) }
-        baseRanking += entries.size
         entries.clear()
     }
 
     fun release() {
-        // O builder compartilha o looper; liberar preload antes do player encerra seus leitores.
         transitions.release()
-        preload.release()
         player.release()
         cache.release()
         database.close()
