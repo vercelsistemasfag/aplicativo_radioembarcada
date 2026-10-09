@@ -43,7 +43,7 @@ class RemoteProgrammingProvider(
                     try { saved.write(json) }
                     catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { diagnostic("Falha ao salvar programação; versão válida mantida em memória.") }
-                    diagnostic("Programação carregada: estação=${loaded.stationId}; versão=${loaded.version}; músicas por bloco=${loaded.rules.songsBetweenInsertions}; alternar=${loaded.rules.alternateStationIdAndJingle}; stationIds=${loaded.stationIds.size}; jingles=${loaded.jingles.size}")
+                    diagnostic("Programação carregada: estação=${loaded.stationId}; versão=${loaded.version}; uma peça por troca; padrão=${loaded.rules.insertionPattern.joinToString(" -> ")}; stationIds=${loaded.stationIds.size}; jingles=${loaded.jingles.size}")
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
