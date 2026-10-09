@@ -190,3 +190,25 @@ A versão anterior com biblioteca tinha **771.352.284 bytes / 735,6 MiB**. O tam
 Os testes JVM não dependem de internet nem dos 77 MP3 reais. Cobrem parsing/validação, catálogo de 77 itens simulado, cache de JSON, fallback offline, refresh/versionamento/backoff, ciclos aleatórios, ProgramItem, estados, buffer e chaves do cache. Também preservam os testes de assets/Jamendo e lifecycle do LoadControl. Testes da sessão usam Robolectric e as ferramentas oficiais de teste do Media3 (somente em testImplementation), com ExoPlayer real e fontes/clock simulados: permissões de controladores comuns e da notificação, Play/Pause, bloqueio de navegação, metadados, avanço interno, padrão 1-2-3, bags independentes, preload real de playlist, buffer/seleção de áudio antes do fim da música e após Pause, preload da música após a peça, envelopes de ganho, Pause/Play e fim natural integral de peças de 8/12/20 s através do ExoPlayer real simulado. Os scripts antigos de preparação da biblioteca ficam preservados, fora do workflow atual; seus testes podem ser executados com `python3 -m unittest discover -s scripts -p 'test_*.py' -v`.
 
 Lint mantém visíveis os avisos de dependências, serviço exportado para controladores, HTTP herdado e target SDK 35. Manifest, permissões de mídia, MediaSession/MediaLibraryService, Audio Focus e estrutura Android Auto permanecem; a validação automática não substitui teste audível em aparelho. Nenhuma dependência de produção nova foi adicionada.
+
+### Tela premium da Rádio Alce
+
+A tela principal usa o logo oficial transparente, fundo preto, detalhes dourados,
+badge AO VIVO, “Sua Rádio em Movimento” e somente Play/Pause. Metadados continuam
+na MediaSession, mas não são apresentados nesta tela. A UI não altera programação,
+notícias, providers, cache, transições ou controles externos.
+
+`ui/RadioPlayerScreen.kt` separa logo, badge, tagline e botão;
+`ui/theme/RadioTheme.kt` centraliza a paleta. `WaveformVisualizer.kt` desenha 41
+barras procedurais a 20 Hz apenas durante reprodução e com a tela em primeiro
+plano, sem analisar áudio ou solicitar permissões. Quando pausada, fica estática.
+O layout adapta logo, espaços e botão à área disponível, respeitando os insets.
+
+Os testes Compose/Robolectric verificam acessibilidade de Play/Pause, conteúdo
+visível, ausência de controles de navegação/metadados/cards, waveform e limites
+em telas de 320 × 568 e 480 × 960 dp. Capturas de conferência ficam em
+`app/build/reports/ui/`. Execute `./gradlew test testDebugUnitTest lintDebug assembleDebug`.
+O workflow **Android debug** existente disponibiliza **app-debug.apk** no Artifact
+**radio-embarcada-debug-apk**. Para validação no aparelho, confira o logo e o botão
+sem rolagem, pause/retome, coloque em segundo plano e confirme que o áudio e os
+controles de mídia continuam funcionando.
