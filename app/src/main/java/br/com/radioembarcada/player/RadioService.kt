@@ -328,15 +328,7 @@ class RadioService : MediaLibraryService() {
         super.onDestroy()
     }
 
-    private inner class LibraryCallback : MediaLibrarySession.Callback {
-        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo):
-            MediaSession.ConnectionResult = MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS)
-                .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
-                    .remove(Player.COMMAND_CHANGE_MEDIA_ITEMS)
-                    .remove(Player.COMMAND_SET_REPEAT_MODE)
-                    .remove(Player.COMMAND_SET_SHUFFLE_MODE).build())
-                .build()
+    private inner class LibraryCallback : RadioSessionCallback() {
         override fun onGetLibraryRoot(session: MediaLibrarySession, browser: MediaSession.ControllerInfo,
             params: LibraryParams?): ListenableFuture<LibraryResult<MediaItem>> =
             Futures.immediateFuture(LibraryResult.ofItem(root(), params))

@@ -36,6 +36,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     if (!useLocalMusic) sourceSets.getByName("main").assets.setSrcDirs(
         listOf(layout.buildDirectory.dir("generated/remoteAssets")))
     // Permite ler metadados via AssetFileDescriptor e buscar posições sem descompactar MP3.
@@ -65,4 +66,6 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("androidx.media3:media3-test-utils-robolectric:1.6.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }

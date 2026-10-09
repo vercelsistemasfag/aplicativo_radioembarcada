@@ -50,6 +50,21 @@ A biblioteca completa percorre ciclos sem repetir IDs antes de selecionar todos 
 
 O ExoPlayer avança naturalmente entre fontes. A fila é reabastecida durante a reprodução; quando termina, a programação continua no mesmo player. O início offline com catálogo salvo prioriza itens que possuem trecho inicial no cache. Isso permite consumir conteúdo preparado, mas não garante reprodução completa de um trecho parcialmente armazenado.
 
+## Controles externos da rádio
+
+`player/RadioSessionCallback.kt`, usado pelo callback da MediaLibrarySession em RadioService,
+restringe `availablePlayerCommands` para todos os controladores, incluindo o controlador da
+notificação. A sessão oferece Play/Pause e consultas de estado/metadados, sem anterior/próxima,
+seek, avanço/retrocesso, alteração da fila, shuffle, repeat ou velocidade. A preparação e a
+seleção da estação pela biblioteca permanecem disponíveis; RadioService aceita somente o ID
+da estação e conserva a programação e posição existentes.
+
+No Media3 1.6.1, os comandos do controlador da notificação também definem as ações da sessão
+nativa do Android. Isso limita notificação, tela bloqueada, Quick Settings, Bluetooth e Android
+Auto. Comandos de salto recebidos são ignorados pelo Media3. Nenhum callback depreciado é usado
+para autorizar comandos. O ExoPlayer interno permanece com seus comandos completos: fim natural,
+recuperação de uma faixa e futuras inserções de ProgramItem continuam na mesma sessão.
+
 ## Buffer, preload e cache
 
 Configurações centralizadas em `player/PlaybackConfiguration.kt`:
@@ -104,9 +119,9 @@ A versão anterior com biblioteca tinha **771.352.284 bytes / 735,6 MiB**. O tam
 2. Deixe tocar por 30–60 s para abastecer buffer/preload. Desligue Wi-Fi e dados móveis: o áudio preparado deve continuar até esgotar.
 3. Recupere rede antes de esgotar e confira continuidade de posição, música e sessão. Repita Wi-Fi → dados móveis e retorno.
 4. Após ouvir faixas e salvar catálogo, reabra temporariamente offline. Trechos já armazenados podem tocar; conteúdo não armazenado exige rede. Instalação nova offline mostra Programação indisponível sem crash.
-5. Verifique Play/Pause, próxima faixa, notificação, Bluetooth, segundo plano, tela apagada, chamadas e Audio Focus. Android Auto mantém a biblioteca/estação e metadados via APIs padrão; precisa de teste em dispositivo.
+5. Coloque o app em segundo plano e confira que notificação/player do sistema oferecem somente Play/Pause, sem anterior/próxima ou seek. Bloqueie a tela e repita. Via Bluetooth/Android Auto, confira Play/Pause e metadados; comandos NEXT/PREVIOUS não devem mudar a faixa. Aguarde o fim natural de uma música e confira o avanço automático. Teste também tela apagada, chamadas e Audio Focus. A apresentação exata depende do Android/veículo e precisa de validação em dispositivo.
 6. Confira logs de debug com `adb logcat -s RadioDiagnostics`; diagnósticos não aparecem em release/UI.
 
-Os testes JVM não dependem de internet nem dos 77 MP3 reais. Cobrem parsing/validação, catálogo de 77 itens simulado, cache de JSON, fallback offline, refresh/versionamento/backoff, ciclos aleatórios, ProgramItem, estados, buffer e chaves do cache. Também preservam os testes de assets/Jamendo e lifecycle do LoadControl. Os scripts antigos de preparação da biblioteca ficam preservados, fora do workflow atual; seus testes podem ser executados com `python3 -m unittest discover -s scripts -p 'test_*.py' -v`.
+Os testes JVM não dependem de internet nem dos 77 MP3 reais. Cobrem parsing/validação, catálogo de 77 itens simulado, cache de JSON, fallback offline, refresh/versionamento/backoff, ciclos aleatórios, ProgramItem, estados, buffer e chaves do cache. Também preservam os testes de assets/Jamendo e lifecycle do LoadControl. Testes da sessão usam Robolectric e as ferramentas oficiais de teste do Media3 (somente em testImplementation), com ExoPlayer real e fontes/clock simulados: permissões de controladores comuns e da notificação, Play/Pause, bloqueio de navegação, metadados, avanço interno e fim natural através de MUSIC/STATION_ID/JINGLE. Os scripts antigos de preparação da biblioteca ficam preservados, fora do workflow atual; seus testes podem ser executados com `python3 -m unittest discover -s scripts -p 'test_*.py' -v`.
 
-Lint mantém visíveis os avisos de dependências, serviço exportado para controladores, HTTP herdado e target SDK 35. Manifest, permissões de mídia, MediaSession/MediaLibraryService, Audio Focus e estrutura Android Auto permanecem; a validação automática não substitui teste audível em aparelho. Nenhuma dependência nova foi adicionada.
+Lint mantém visíveis os avisos de dependências, serviço exportado para controladores, HTTP herdado e target SDK 35. Manifest, permissões de mídia, MediaSession/MediaLibraryService, Audio Focus e estrutura Android Auto permanecem; a validação automática não substitui teste audível em aparelho. Nenhuma dependência de produção nova foi adicionada.
