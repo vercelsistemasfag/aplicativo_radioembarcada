@@ -52,7 +52,7 @@ A primeira consulta ocorre ao iniciar a programação. O provider mantém o cat�
 
 O último catálogo válido fica em `filesDir/music_catalog.json`, fora do cache de áudio. A gravação usa arquivo temporário e troca atômica; respostas inválidas não apagam dados válidos. Sem catálogo salvo e com falha de rede, a UI mostra **Programação indisponível** e o serviço agenda novas tentativas controladas. URLs e erros internos não aparecem na UI.
 
-A biblioteca completa prioriza faixas inéditas, com histórico persistido e janela de seis horas antes de repetir. A exceção por esgotamento utiliza o grupo de músicas mais antigo; detalhes na seção de repetição musical abaixo. Itens ainda pendentes não são duplicados, e a fronteira entre lotes/ciclos evita repetição imediata. Artistas distintos têm preferência, sem bloquear uma biblioteca com artista único ou desconhecido. Versão/itens alterados atualizam a biblioteca lógica na próxima reposição; a faixa atual e sua sessão permanecem.
+A biblioteca completa prioriza faixas inéditas, com histórico persistido e janela de seis horas antes de repetir. A exceção por esgotamento utiliza o grupo de músicas mais antigo; detalhes na seção de repetição musical abaixo. Itens ainda pendentes não são duplicados, e a fronteira entre lotes/ciclos evita repetição imediata. Artistas conhecidos têm janela de 90 minutos, com exceção apenas quando os demais artistas elegíveis se esgotam. Versão/itens alterados atualizam a biblioteca lógica na próxima reposição; a faixa atual e sua sessão permanecem.
 
 O ExoPlayer avança naturalmente entre fontes. A fila é reabastecida durante a reprodução; quando termina, a programação continua no mesmo player. O início offline com catálogo salvo prioriza itens que possuem trecho inicial no cache. Isso permite consumir conteúdo preparado, mas não garante reprodução completa de um trecho parcialmente armazenado.
 
@@ -236,3 +236,13 @@ repetições recentes apenas para completar um lote de 20.
 
 O padrão STATION_ID/STATION_ID/JINGLE, seus shuffle-bags, fades, preload e blocos de
 notícias permanecem. Nenhuma notícia, vinheta ou jingle consome o histórico musical.
+
+A janela por artista é `ProgrammingConfiguration.ARTIST_REPEAT_INTERVAL_MS` (**90 min**).
+A seleção considera o histórico persistido e as reservas de cada música da fila,
+inclusive dentro do mesmo lote. A restrição de seis horas por faixa continua tendo
+prioridade: entre suas opções elegíveis, são escolhidos artistas fora dos 90 minutos.
+Se nenhum restar, a exceção prioriza o artista há mais tempo sem seleção. Nomes são
+normalizados sem diferenciar maiúsculas/minúsculas e espaços nas bordas; arquivos
+sem artista identificável não são agrupados como um artista fictício. O catálogo
+precisa fornecer artistas corretos para que essa proteção possa ser aplicada.
+Vinhetas, jingles e notícias não consomem o histórico de artistas.

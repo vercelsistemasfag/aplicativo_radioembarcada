@@ -82,8 +82,8 @@ class AutomaticProgramming(private val provider: MusicProvider,
         val available = catalog.filter { it.key !in queuedIds && it.key !in excludedIds }
         val candidates = repetition.select(available)
         val batch = queueBuilder.build(candidates, previous = previous,
-            allowSameArtist = true, allowSingleTrackRepeat = catalog.count { it.key !in excludedIds } == 1 && queuedIds.isEmpty(), prefer = prefer)
-        repetition.scheduled(batch)
+            allowSameArtist = true, allowSingleTrackRepeat = catalog.count { it.key !in excludedIds } == 1 && queuedIds.isEmpty(), prefer = prefer,
+            selectCandidates = repetition::selectArtists, onSelected = { repetition.scheduled(listOf(it)) })
         return batch
     }
 }
