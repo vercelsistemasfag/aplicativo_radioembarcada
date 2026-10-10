@@ -221,7 +221,9 @@ inclusive na saída Bluetooth quando suportado pelo aparelho. Não alteram o gan
 interno dos fades, nem adicionam Next/Previous/Seek aos controles da sessão.
 
 O player nativo, notificação e tela bloqueada recebem o título fixo **Rádio Alce - AO VIVO**
-e a imagem enviada em `drawable-nodpi/radio_alce_brand.jpg`, também usada pelo ícone adaptativo.
+e a imagem quadrada enviada em `drawable-nodpi/radio_alce_media.jpg` (1280 × 1280),
+com margem ao redor do logo para reduzir cortes. O ícone adaptativo continua usando
+`radio_alce_brand.jpg`; a imagem e o layout principal permanecem separados.
 A arte é um recurso local carregável pelo Media3 sem internet; o Android decide como
 renderizá-la no fundo/cartão do sistema. Capas fornecidas pelo catálogo ou embutidas
 nos MP3 não são encaminhadas à sessão. Títulos/artistas continuam nos ProgramItems
@@ -229,15 +231,38 @@ internos para a programação e anti-repetição; o crédito da fonte das notíc
 O extractor Media3 desabilita metadados ID3 de apresentação, preservando a leitura
 de delay/padding gapless e os créditos da fonte das notícias.
 
-A janela de repetição é `ProgrammingConfiguration.MUSIC_REPEAT_INTERVAL_MS` (**6 h**).
-O histórico privado por tenant registra músicas realmente iniciadas e sobrevive ao
-reinício do app; preloads não são gravados como reprodução. Reservas da fila impedem
-agendar a mesma faixa repetidamente. Faixas inéditas têm prioridade; depois vêm as
-faixas liberadas pela janela. Só quando essas opções fora da fila acabam é usada
-uma exceção: o grupo mais antigo é embaralhado, mantendo a prevenção de repetição
-imediata. Com 77 músicas a biblioteca pode terminar antes de seis horas; a exceção
-mantém a rádio contínua e evita favorecer sempre as mesmas faixas. Não são inseridas
-repetições recentes apenas para completar um lote de 20.
+A janela de repetição é `ProgrammingConfiguration.MUSIC_REPEAT_BLOCK_WINDOW` (**6 h**).
+`PlaybackHistoryRepository` grava um checkpoint JSON privado por tenant em
+`filesDir/music_history_<clientId>.json`: timestamps por faixa e artista, última
+faixa iniciada e os primeiros cinco IDs da abertura anterior. Não salva a fila.
+A gravação sincroniza o arquivo e substitui o checkpoint atomicamente, durante a
+reprodução, sem depender de `onDestroy()`. O formato anterior é migrado preservando
+seus timestamps. Apenas MUSIC realmente iniciada pelo player é registrada;
+preload e agendamento são reservas em memória, nunca execuções persistidas.
+
+Ao iniciar uma sessão, o histórico é recarregado e reconciliado com o catálogo
+completo: IDs removidos são descartados, músicas novas ficam elegíveis. Retenção
+centralizada de **48 h**, até **500 entradas** por mapa; a última faixa permanece
+como proteção de fronteira enquanto existir no catálogo. Pause não apaga histórico
+nem prolonga o timestamp de uma mesma execução.
+
+A seleção tenta primeiro a janela de 6 h. Somente se não houver elegíveis, relaxa
+para **3 h**, **90 min** e finalmente **0**, priorizando o grupo menos recentemente
+usado. Nunca preenche um lote com faixas bloqueadas apenas para alcançar 20 itens.
+Faixas inéditas têm prioridade; depois são embaralhadas as opções mais antigas,
+respeitando também a restrição de artista. `Random.Default` gera uma nova ordem,
+sem seed fixa em produção. A primeira faixa não pode ser a última da sessão
+anterior (exceto catálogo com uma única música). A abertura anterior é evitada
+no primeiro ponto em que houver alternativas elegíveis, sem restaurar uma playlist.
+
+Para conferir no aparelho DEBUG, acompanhe `adb logcat -s RadioDiagnostics`: aparecem
+histórico carregado, última faixa, elegíveis/bloqueadas, relaxamentos e primeiros IDs.
+Deixe algumas músicas começarem, execute `adb shell am force-stop br.com.radioembarcada`,
+reabra pelo ícone e pressione Play; compare os IDs com a sessão anterior. Repita
+após fechar pelo gesto e reiniciar o dispositivo. Não desinstale nem limpe os dados:
+essas ações apagam intencionalmente o armazenamento privado do Android. Os testes
+simulam descarte/reinstanciação sem callback de encerramento; Force Stop, reboot e
+renderização da arte em diferentes aparelhos ainda requerem conferência manual.
 
 O padrão STATION_ID/STATION_ID/JINGLE, seus shuffle-bags, fades, preload e blocos de
 notícias permanecem. Nenhuma notícia, vinheta ou jingle consome o histórico musical.

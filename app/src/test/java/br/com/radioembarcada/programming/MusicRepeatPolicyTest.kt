@@ -40,6 +40,17 @@ class MusicRepeatPolicyTest {
         time++
         assertEquals(listOf(track(1)), policy.select(listOf(track(1), track(2)))) // first track now eligible normally
     }
+    @Test fun relaxationUsesThreeHoursThenNinetyMinutesOnlyWhenStrictOptionsAreExhausted() {
+        val now = 10L * 60 * 60 * 1000
+        val history = MemoryMusicHistory().apply { write(mapOf(track(1).key to now - 4L * 60 * 60 * 1000,
+            track(2).key to now - 2L * 60 * 60 * 1000, track(3).key to now - 60 * 60 * 1000)) }
+        val diagnostics = mutableListOf<String>()
+        val policy = MusicRepeatPolicy(history, { now }, diagnostics::add)
+        assertEquals(listOf(track(1)), policy.select(listOf(track(1), track(2), track(3))))
+        assertTrue(diagnostics.any { "180 min" in it })
+        assertEquals(listOf(track(2)), policy.select(listOf(track(2), track(3))))
+        assertTrue(diagnostics.any { "90 min" in it })
+    }
     @Test fun smallCatalogueExceptionRotatesOldestTracksWithoutImmediateBoundaryRepeat() = runBlocking {
         val engine = AutomaticProgramming(provider(3), now = { 0L })
         val first = engine.nextBatch()

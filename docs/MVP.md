@@ -25,6 +25,21 @@ RemoteNewsProvider é separado dos provedores musicais/institucionais: RSS Radio
 
 Uma reserva editorial substitui a inserção normal de uma fronteira futura, adiando-a sem consumir seu ciclo/bag. Intro → notícia → música é indivisível; cada item termina integralmente, com preload oficial e readiness comprovada. Se o áudio não estiver preparado antes do boundary, a fila normal é restaurada; falhas editoriais não encerram a rádio. Histórico, último horário e relógio ativo são persistidos privadamente. DEBUG aceita intervalo de 3/5 minutos para teste, release mantém 60 minutos. Não há nova tela, backend ou áudio empacotado. Workflow existente valida testes/lint/APK e disponibiliza o Artifact.
 
+## Atualização autorizada — histórico musical entre sessões
+
+PlaybackHistoryRepository mantém um checkpoint JSON privado por tenant com timestamps
+musicais/artistas, última MUSIC iniciada e cinco IDs da abertura anterior; a fila não
+é persistida. Gravação sincronizada e substituição atômica ocorrem na execução real,
+sem depender do encerramento do app; o formato antigo é migrado. Retenção de 48 h
+com limite de 500 entradas, reconciliação de IDs removidos e prioridade para inéditas.
+Janela musical de 6 h relaxada somente quando esgotadas as opções para 3 h, 90 min e
+0, escolhendo as menos recentes. Nova ordem usa Random.Default e evita a última
+faixa e a abertura anterior quando há alternativas; artista mantém 90 min.
+
+Preload, Pause, inserts e notícias não consomem histórico musical. Ciclo institucional,
+notícias de hora em hora, transições e controles da sessão permanecem. A arte nativa
+passa a usar imagem quadrada com margens, separada do ícone e layout existentes.
+
 ## Visão
 Aplicativo Android multi-tenant para rádios 24/7 voltadas a plataformas locais de mobilidade.
 

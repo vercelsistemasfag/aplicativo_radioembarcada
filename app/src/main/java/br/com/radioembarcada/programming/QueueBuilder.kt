@@ -13,7 +13,7 @@ class QueueBuilder(private val random: Random = Random.Default) {
         onSelected: (ProgramItem) -> Unit = {}): List<ProgramItem> {
         val candidates = tracks.distinctBy(Track::key).shuffled(random).sortedByDescending { prefer(ProgramItem.music(it)) }.toMutableList()
         val result = mutableListOf<ProgramItem>()
-        var lastId = previous?.id
+        var lastId = previous?.contentId
         var lastArtist = previous?.artistKey
         while (result.size < size) {
             val boundarySafe = candidates.filter { it.key != lastId }

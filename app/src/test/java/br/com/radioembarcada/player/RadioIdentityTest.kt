@@ -2,6 +2,7 @@ package br.com.radioembarcada.player
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.drawable.AdaptiveIconDrawable
 import br.com.radioembarcada.R
@@ -23,6 +24,16 @@ class RadioIdentityTest {
         val context = RuntimeEnvironment.getApplication()
         assertTrue(context.getDrawable(R.mipmap.ic_launcher) is AdaptiveIconDrawable)
         assertEquals("Rádio Alce", context.packageManager.getApplicationLabel(context.applicationInfo).toString())
+    }
+    @Test fun nativeMediaArtworkIsSquareAndSeparateFromLauncherArtwork() {
+        val resources = RuntimeEnvironment.getApplication().resources
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeResource(resources, R.drawable.radio_alce_media, options)
+        assertEquals(1280, options.outWidth)
+        assertEquals(1280, options.outHeight)
+        BitmapFactory.decodeResource(resources, R.drawable.radio_alce_brand, options)
+        assertEquals(1280, options.outWidth)
+        assertEquals(1170, options.outHeight)
     }
     @Test fun launcherUsesRadioAlceLabelAndOfficialLogoAdaptiveIcon() {
         val context = RuntimeEnvironment.getApplication()

@@ -79,11 +79,16 @@ class AutomaticProgramming(private val provider: MusicProvider,
         prefer: (ProgramItem) -> Boolean): List<ProgramItem> {
         val catalog = provider.fetchTracks(Int.MAX_VALUE, 0).distinctBy { it.key }
         if (catalog.isEmpty()) throw MusicProviderException("Programação indisponível.", false)
+        repetition.reconcile(catalog)
+        val boundary = previous ?: catalog.find { it.key == repetition.lastTrackId }?.let(ProgramItem::music)
+        val opening = mutableListOf<String>()
         val available = catalog.filter { it.key !in queuedIds && it.key !in excludedIds }
         val candidates = repetition.select(available)
-        val batch = queueBuilder.build(candidates, previous = previous,
+        val batch = queueBuilder.build(candidates, previous = boundary,
             allowSameArtist = true, allowSingleTrackRepeat = catalog.count { it.key !in excludedIds } == 1 && queuedIds.isEmpty(), prefer = prefer,
-            selectCandidates = repetition::selectArtists, onSelected = { repetition.scheduled(listOf(it)) })
+            selectCandidates = { repetition.avoidOpeningRepeat(repetition.selectArtists(it), opening) },
+            onSelected = { repetition.scheduled(listOf(it)); opening += it.contentId })
+        repetition.openingBuilt(batch)
         return batch
     }
 }

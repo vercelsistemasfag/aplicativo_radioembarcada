@@ -10,7 +10,7 @@ import br.com.radioembarcada.R
 internal class RadioMediaIdentity(context: Context, stationName: String = context.getString(R.string.app_name)) {
     val title: String = context.getString(R.string.radio_live_title, stationName)
     // Media3 loads the packaged resource offline; no remote artwork or repeated bitmap parcels.
-    val artworkUri: Uri = "android.resource://${context.packageName}/${R.drawable.radio_alce_brand}".toUri()
+    val artworkUri: Uri = "android.resource://${context.packageName}/${R.drawable.radio_alce_media}".toUri()
 
     fun applyTo(builder: MediaMetadata.Builder): MediaMetadata.Builder = builder
         .setTitle(title).setDisplayTitle(title).setArtworkUri(artworkUri)
