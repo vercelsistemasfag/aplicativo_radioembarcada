@@ -1,0 +1,99 @@
+name: Sincronizar catálogo R2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  R2_ACCOUNT_ID: 6d1b0b06fe5ec1fc684e9ab00fca8e0f
+  R2_BUCKET: tuaradio
+  R2_PUBLIC_BASE: https://pub-e38948fd737d4d969bb4e65eebed0249.r2.dev
+  R2_MUSIC_PREFIX: music/
+
+jobs:
+  sync:
+    name: Regenerar music_catalog.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validar credenciais R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          test -n "$AWS_ACCESS_KEY_ID" || { echo "::error::Crie o secret R2_ACCESS_KEY_ID"; exit 1; }
+          test -n "$AWS_SECRET_ACCESS_KEY" || { echo "::error::Crie o secret R2_SECRET_ACCESS_KEY"; exit 1; }
+          aws --version
+
+      - name: Listar biblioteca atual
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3api list-objects-v2             --bucket "$R2_BUCKET"             --prefix "$R2_MUSIC_PREFIX"             --endpoint-url "$ENDPOINT"             --query 'Contents[].Key'             --output json > /tmp/r2_music_keys.json
+
+          COUNT="$(python3 - <<'PY'
+          import json
+          with open('/tmp/r2_music_keys.json', encoding='utf-8') as f:
+              keys = json.load(f) or []
+          print(sum(isinstance(k, str) and k.lower().endswith('.mp3') for k in keys))
+          PY
+          )"
+
+          echo "MP3 encontrados no R2: $COUNT"
+          test "$COUNT" -gt 0 || { echo "::error::Nenhum MP3 encontrado em $R2_MUSIC_PREFIX"; exit 1; }
+
+      - name: Baixar catálogo anterior
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp             "s3://${R2_BUCKET}/music_catalog.json"             /tmp/old_music_catalog.json             --endpoint-url "$ENDPOINT"           || echo '{}' > /tmp/old_music_catalog.json
+
+      - name: Gerar catálogo
+        run: |
+          python3 scripts/sync_r2_catalog.py             --keys /tmp/r2_music_keys.json             --old-catalog /tmp/old_music_catalog.json             --output /tmp/music_catalog.json             --public-base "$R2_PUBLIC_BASE"             --prefix "$R2_MUSIC_PREFIX"
+
+      - name: Publicar music_catalog.json
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp             /tmp/music_catalog.json             "s3://${R2_BUCKET}/music_catalog.json"             --content-type "application/json; charset=utf-8"             --cache-control "no-cache, max-age=0"             --endpoint-url "$ENDPOINT"
+
+      - name: Validar catálogo público
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS "${R2_PUBLIC_BASE}/music_catalog.json" -o /tmp/public_music_catalog.json; then
+              break
+            fi
+            sleep 3
+          done
+
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open('/tmp/public_music_catalog.json', encoding='utf-8') as f:
+              data = json.load(f)
+
+          count = len(data.get('items', []))
+          version = data.get('version')
+          assert count > 0, 'Catálogo público ficou vazio'
+
+          summary = f"Catálogo R2 sincronizado: versão {version}, {count} músicas."
+          print(summary)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write(summary + '\n')
+          PY
