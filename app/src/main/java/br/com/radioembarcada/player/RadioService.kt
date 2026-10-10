@@ -152,6 +152,7 @@ class RadioService : MediaLibraryService() {
                     if (player.isPlaying) engine.items.getOrNull(player.currentMediaItemIndex)?.let(news::onPlaying)
                 }
                 if (player.isPlaying) {
+                    engine.items.getOrNull(player.currentMediaItemIndex)?.let(programming::onPlaying)
                     hasPlayed = true
                     recovering = false
                     terminalErrors = 0

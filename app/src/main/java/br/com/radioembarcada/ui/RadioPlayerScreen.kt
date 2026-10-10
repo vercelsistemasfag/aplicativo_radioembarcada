@@ -39,6 +39,8 @@ fun RadioPlayerScreen(
     onTogglePlayback: () -> Unit,
     modifier: Modifier = Modifier,
     animateWaveform: Boolean = true,
+    onVolumeDown: () -> Unit = {},
+    onVolumeUp: () -> Unit = {},
 ) {
     Box(modifier.fillMaxSize().background(RadioColors.BackgroundBlack).premiumBackground().testTag("radio-screen")) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp)) {
@@ -57,7 +59,12 @@ fun RadioPlayerScreen(
                 WaveformVisualizer(playing && animateWaveform,
                     Modifier.fillMaxWidth(.88f).height(if (compact) 44.dp else 64.dp))
                 Spacer(Modifier.height(spacing))
-                PrimaryPlayPauseButton(playRequested, controlsEnabled, onTogglePlayback, Modifier.size(controlSize))
+                Row(Modifier.widthIn(max = 360.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                    VolumeButton(false, onVolumeDown)
+                    PrimaryPlayPauseButton(playRequested, controlsEnabled, onTogglePlayback, Modifier.size(controlSize))
+                    VolumeButton(true, onVolumeUp)
+                }
                 Spacer(Modifier.weight(.3f))
             }
         }
@@ -152,6 +159,34 @@ private fun Modifier.premiumBackground() = drawWithCache {
         drawRect(glow)
         curves.forEachIndexed { index, path ->
             drawPath(path, RadioColors.AlceGold.copy(alpha = .055f - index * .012f), style = Stroke(1.dp.toPx()))
+        }
+    }
+}
+
+
+@Composable
+fun VolumeButton(increase: Boolean, onClick: () -> Unit) {
+    val label = if (increase) "Aumentar volume" else "Diminuir volume"
+    Box(Modifier.size(48.dp).clip(CircleShape)
+        .background(RadioColors.AlceGoldSoft.copy(alpha = .08f))
+        .border(1.dp, RadioColors.AlceGoldSoft.copy(alpha = .65f), CircleShape)
+        .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
+        .semantics { contentDescription = label }, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.size(24.dp)) {
+            val color = RadioColors.AlceGold
+            val speaker = Path().apply {
+                moveTo(size.width * .10f, size.height * .36f)
+                lineTo(size.width * .27f, size.height * .36f)
+                lineTo(size.width * .47f, size.height * .18f)
+                lineTo(size.width * .47f, size.height * .82f)
+                lineTo(size.width * .27f, size.height * .64f)
+                lineTo(size.width * .10f, size.height * .64f); close()
+            }
+            drawPath(speaker, color)
+            drawLine(color, Offset(size.width * .63f, size.height * .5f),
+                Offset(size.width * .95f, size.height * .5f), 1.5.dp.toPx(), StrokeCap.Round)
+            if (increase) drawLine(color, Offset(size.width * .79f, size.height * .34f),
+                Offset(size.width * .79f, size.height * .66f), 1.5.dp.toPx(), StrokeCap.Round)
         }
     }
 }

@@ -51,9 +51,9 @@ class RadioPlayerScreenTest {
         compose.onNodeWithContentDescription("Reproduzir rádio").assertIsDisplayed()
         assertEquals(2, clicks)
     }
-    @Test fun screenExposesOnlyOneActionAndNoNavigationSeekOrFooter() {
+    @Test fun screenExposesOnlyPlaybackAndVolumeActionsWithoutNavigationSeekOrFooter() {
         screen()
-        compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+        compose.onAllNodes(hasClickAction()).assertCountEquals(3)
         listOf("Next", "Previous", "Próxima", "Anterior", "Músicas sem interrupções", "Energia limpa",
             "Notícias a cada 30 min", "Duração", "Reconectando", "Conectando").forEach {
             compose.onNodeWithText(it, substring = true).assertDoesNotExist()
@@ -61,6 +61,16 @@ class RadioPlayerScreenTest {
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)).assertCountEquals(0)
         // Exact visible copy: there is no title/artist input to this presentation component.
         compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsProperties.Text)).assertCountEquals(2)
+    }
+    @Test fun volumeButtonsCallTheirRespectiveActionsWithoutTogglingPlayback() {
+        var down = 0; var up = 0; var toggles = 0
+        compose.setContent { host = LocalView.current; RadioTheme {
+            RadioPlayerScreen("Rádio Alce", false, false, true, { toggles++ },
+                onVolumeDown = { down++ }, onVolumeUp = { up++ })
+        } }
+        compose.onNodeWithContentDescription("Diminuir volume").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Aumentar volume").assertIsDisplayed().performClick()
+        assertEquals(1, down); assertEquals(1, up); assertEquals(0, toggles)
     }
     @Test fun waveformIsActiveOnlyWhileActuallyPlaying() {
         val playing = mutableStateOf(false)

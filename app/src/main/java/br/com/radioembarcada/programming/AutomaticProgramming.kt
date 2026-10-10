@@ -7,22 +7,25 @@ import br.com.radioembarcada.model.ProgramItem
 import br.com.radioembarcada.model.ProgramItemType
 import br.com.radioembarcada.model.Track
 import kotlinx.coroutines.CancellationException
+import br.com.radioembarcada.storage.MusicHistory
+import br.com.radioembarcada.storage.MemoryMusicHistory
 
 class AutomaticProgramming(private val provider: MusicProvider,
     private val queueBuilder: QueueBuilder = QueueBuilder(),
     private val programmingProvider: ProgrammingProvider? = null,
-    private val diagnostic: (String) -> Unit = {}) {
+    private val diagnostic: (String) -> Unit = {},
+    history: MusicHistory = MemoryMusicHistory(),
+    now: () -> Long = System::currentTimeMillis) {
+    private val repetition = MusicRepeatPolicy(history, now, diagnostic)
+    fun onPlaying(item: ProgramItem) = repetition.onPlaying(item)
     private val sequencer = ProgrammingSequencer(diagnostic)
     private var lastMusic: ProgramItem? = null
-    private var completeCatalog: List<Track>? = null
-    private val remaining = mutableListOf<Track>()
-    private var revision: Long? = null
     private var page = 0
     private val recentlyScheduled = ArrayDeque<String>()
     private val deferredInserts = ArrayDeque<ProgramItem>()
     private var newsRollback: Pair<List<ProgramItem>, List<ProgramItem>>? = null
 
-    fun startSession() { sequencer.startSession(); deferredInserts.clear(); newsRollback = null }
+    fun startSession() { lastMusic = null; repetition.startSession(); sequencer.startSession(); deferredInserts.clear(); newsRollback = null }
 
     fun insertNews(upcoming: List<ProgramItem>, block: List<ProgramItem>): List<ProgramItem> {
         check(newsRollback == null)
@@ -75,18 +78,12 @@ class AutomaticProgramming(private val provider: MusicProvider,
     private suspend fun nextCompleteBatch(previous: ProgramItem?, queuedIds: Set<String>, excludedIds: Set<String>,
         prefer: (ProgramItem) -> Boolean): List<ProgramItem> {
         val catalog = provider.fetchTracks(Int.MAX_VALUE, 0).distinctBy { it.key }
-        if (completeCatalog != catalog || revision != provider.catalogRevision) {
-            completeCatalog = catalog
-            revision = provider.catalogRevision
-            remaining.clear()
-        }
         if (catalog.isEmpty()) throw MusicProviderException("Programação indisponível.", false)
-        remaining.removeAll { it.key in excludedIds }
-        if (remaining.isEmpty()) remaining.addAll(catalog.filter { it.key !in excludedIds })
-        val batch = queueBuilder.build(remaining.filter { it.key !in queuedIds }, previous = previous,
+        val available = catalog.filter { it.key !in queuedIds && it.key !in excludedIds }
+        val candidates = repetition.select(available)
+        val batch = queueBuilder.build(candidates, previous = previous,
             allowSameArtist = true, allowSingleTrackRepeat = catalog.count { it.key !in excludedIds } == 1 && queuedIds.isEmpty(), prefer = prefer)
-        val scheduled = batch.map { it.id }.toSet()
-        remaining.removeAll { it.key in scheduled }
+        repetition.scheduled(batch)
         return batch
     }
 }

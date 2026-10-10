@@ -37,6 +37,8 @@ class MainActivity : ComponentActivity() {
                     controlsEnabled = ready,
                     animateWaveform = lifecycle.isAtLeast(Lifecycle.State.RESUMED),
                     onTogglePlayback = model::togglePlayback,
+                    onVolumeDown = model::lowerVolume,
+                    onVolumeUp = model::raiseVolume,
                 )
             }
         }

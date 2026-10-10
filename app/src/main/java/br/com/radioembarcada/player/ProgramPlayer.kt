@@ -1,7 +1,6 @@
 package br.com.radioembarcada.player
 
 import android.content.Context
-import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -14,6 +13,8 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -56,19 +57,22 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         val dataSource = CacheDataSource.Factory().setCache(cache)
             .setUpstreamDataSourceFactory(http)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        val upstream = ProgressiveMediaSource.Factory(dataSource)
+        // Disable embedded ID3 artwork; catalogue metadata remains authoritative.
+        // Media3 still reads Xing/LAME and required gapless/seek ID3 frames internally.
+        val extractors = radioExtractors()
+        val upstream = ProgressiveMediaSource.Factory(dataSource, extractors)
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy())
-        val local = ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context))
+        val local = ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context), extractors)
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy())
-        val editorial = ProgressiveMediaSource.Factory(dataSource)
+        val editorial = ProgressiveMediaSource.Factory(dataSource, extractors)
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy(finiteRetries = true))
         val officialAudio = CacheDataSource.Factory().setCache(cache)
             .setUpstreamDataSourceFactory { OfficialNewsDataSource(http.createDataSource()) }
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        val newsAudio = ProgressiveMediaSource.Factory(officialAudio)
+        val newsAudio = ProgressiveMediaSource.Factory(officialAudio, extractors)
             .setContinueLoadingCheckIntervalBytes(PlaybackConfiguration.LOADING_CHECK_INTERVAL_BYTES)
             .setLoadErrorHandlingPolicy(RadioLoadErrorPolicy(finiteRetries = true))
         val observedFactory = object : MediaSource.Factory by upstream {
@@ -170,8 +174,7 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
     private fun mediaItem(item: ProgramItem): MediaItem = MediaItem.Builder()
         .setMediaId(item.id).setUri(item.audioUrl).setCustomCacheKey(audioCacheKey(item))
         .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
-            .setArtworkUri(item.artworkUrl?.let(Uri::parse))
-            .setArtworkData(item.artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER).setDurationMs(item.durationMs.takeIf { it > 0 })
+            .setDurationMs(item.durationMs.takeIf { it > 0 })
             .setIsBrowsable(false).setIsPlayable(true)
             .setMediaType(if (item.type == ProgramItemType.MUSIC) MediaMetadata.MEDIA_TYPE_MUSIC
                 else MediaMetadata.MEDIA_TYPE_MIXED)
@@ -188,3 +191,6 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
 internal fun audioCacheKey(item: ProgramItem): String = item.contentId + ":" +
     java.security.MessageDigest.getInstance("SHA-256").digest(item.audioUrl.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
+
+@UnstableApi
+internal fun radioExtractors() = DefaultExtractorsFactory().setMp3ExtractorFlags(Mp3Extractor.FLAG_DISABLE_ID3_METADATA)

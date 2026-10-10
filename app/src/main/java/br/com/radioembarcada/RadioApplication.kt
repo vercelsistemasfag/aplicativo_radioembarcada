@@ -16,6 +16,7 @@ import br.com.radioembarcada.network.news.RemoteNewsProvider
 import br.com.radioembarcada.news.NewsProgramming
 import br.com.radioembarcada.news.NewsConfiguration
 import br.com.radioembarcada.storage.FileNewsHistory
+import br.com.radioembarcada.storage.FileMusicHistory
 
 class RadioApplication : Application() {
     val musicProvider: MusicProvider by lazy {
@@ -29,7 +30,8 @@ class RadioApplication : Application() {
             else RemoteProgrammingProvider(tenants.activeTenant.clientId,
                 FileProgrammingConfiguration(filesDir.resolve("programming.json")),
                 connected = { getSystemService(ConnectivityManager::class.java).activeNetwork != null },
-                diagnostic = diagnostic), diagnostic = diagnostic)
+                diagnostic = diagnostic), diagnostic = diagnostic,
+            history = FileMusicHistory(filesDir.resolve("music_history_${tenants.activeTenant.clientId}.json")))
     }
     val tenants by lazy { TenantRepository(LocalTenantStore(this)) }
     val news by lazy {

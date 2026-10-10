@@ -52,7 +52,7 @@ A primeira consulta ocorre ao iniciar a programação. O provider mantém o cat�
 
 O último catálogo válido fica em `filesDir/music_catalog.json`, fora do cache de áudio. A gravação usa arquivo temporário e troca atômica; respostas inválidas não apagam dados válidos. Sem catálogo salvo e com falha de rede, a UI mostra **Programação indisponível** e o serviço agenda novas tentativas controladas. URLs e erros internos não aparecem na UI.
 
-A biblioteca completa percorre ciclos sem repetir IDs antes de selecionar todos os itens elegíveis; cada novo ciclo gera outra ordem. Itens ainda pendentes não são duplicados, e a fronteira entre lotes/ciclos evita repetição imediata. Artistas distintos têm preferência, sem bloquear uma biblioteca com artista único ou desconhecido. Versão/itens alterados atualizam a biblioteca lógica na próxima reposição; a faixa atual e sua sessão permanecem.
+A biblioteca completa prioriza faixas inéditas, com histórico persistido e janela de seis horas antes de repetir. A exceção por esgotamento utiliza o grupo de músicas mais antigo; detalhes na seção de repetição musical abaixo. Itens ainda pendentes não são duplicados, e a fronteira entre lotes/ciclos evita repetição imediata. Artistas distintos têm preferência, sem bloquear uma biblioteca com artista único ou desconhecido. Versão/itens alterados atualizam a biblioteca lógica na próxima reposição; a faixa atual e sua sessão permanecem.
 
 O ExoPlayer avança naturalmente entre fontes. A fila é reabastecida durante a reprodução; quando termina, a programação continua no mesmo player. O início offline com catálogo salvo prioriza itens que possuem trecho inicial no cache. Isso permite consumir conteúdo preparado, mas não garante reprodução completa de um trecho parcialmente armazenado.
 
@@ -194,7 +194,7 @@ Lint mantém visíveis os avisos de dependências, serviço exportado para contr
 ### Tela premium da Rádio Alce
 
 A tela principal usa o logo oficial transparente, fundo preto, detalhes dourados,
-badge AO VIVO, “Sua Rádio em Movimento” e somente Play/Pause. Metadados continuam
+badge AO VIVO, “Sua Rádio em Movimento”, Play/Pause e volume lateral. Metadados continuam
 na MediaSession, mas não são apresentados nesta tela. A UI não altera programação,
 notícias, providers, cache, transições ou controles externos.
 
@@ -212,3 +212,27 @@ O workflow **Android debug** existente disponibiliza **app-debug.apk** no Artifa
 **radio-embarcada-debug-apk**. Para validação no aparelho, confira o logo e o botão
 sem rolagem, pause/retome, coloque em segundo plano e confirme que o áudio e os
 controles de mídia continuam funcionando.
+
+### Volume, identidade e repetição musical
+
+O aplicativo aparece como **Rádio Alce**, com ícone adaptativo usando o logo oficial.
+Os dois botões laterais diminuem/aumentam o volume de mídia do Android em um passo,
+inclusive na saída Bluetooth quando suportado pelo aparelho. Não alteram o ganho
+interno dos fades, nem adicionam Next/Previous/Seek aos controles da sessão.
+
+Capas fornecidas pelo catálogo ou embutidas nos MP3 não são encaminhadas à sessão.
+O extractor Media3 desabilita metadados ID3 de apresentação, preservando a leitura
+de delay/padding gapless e os títulos/artistas/créditos fornecidos pela programação.
+
+A janela de repetição é `ProgrammingConfiguration.MUSIC_REPEAT_INTERVAL_MS` (**6 h**).
+O histórico privado por tenant registra músicas realmente iniciadas e sobrevive ao
+reinício do app; preloads não são gravados como reprodução. Reservas da fila impedem
+agendar a mesma faixa repetidamente. Faixas inéditas têm prioridade; depois vêm as
+faixas liberadas pela janela. Só quando essas opções fora da fila acabam é usada
+uma exceção: o grupo mais antigo é embaralhado, mantendo a prevenção de repetição
+imediata. Com 77 músicas a biblioteca pode terminar antes de seis horas; a exceção
+mantém a rádio contínua e evita favorecer sempre as mesmas faixas. Não são inseridas
+repetições recentes apenas para completar um lote de 20.
+
+O padrão STATION_ID/STATION_ID/JINGLE, seus shuffle-bags, fades, preload e blocos de
+notícias permanecem. Nenhuma notícia, vinheta ou jingle consome o histórico musical.
