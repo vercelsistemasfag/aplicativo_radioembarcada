@@ -220,9 +220,14 @@ Os dois botões laterais diminuem/aumentam o volume de mídia do Android em um p
 inclusive na saída Bluetooth quando suportado pelo aparelho. Não alteram o ganho
 interno dos fades, nem adicionam Next/Previous/Seek aos controles da sessão.
 
-Capas fornecidas pelo catálogo ou embutidas nos MP3 não são encaminhadas à sessão.
+O player nativo, notificação e tela bloqueada recebem o título fixo **Rádio Alce - AO VIVO**
+e a imagem enviada em `drawable-nodpi/radio_alce_brand.jpg`, também usada pelo ícone adaptativo.
+A arte é um recurso local carregável pelo Media3 sem internet; o Android decide como
+renderizá-la no fundo/cartão do sistema. Capas fornecidas pelo catálogo ou embutidas
+nos MP3 não são encaminhadas à sessão. Títulos/artistas continuam nos ProgramItems
+internos para a programação e anti-repetição; o crédito da fonte das notícias permanece.
 O extractor Media3 desabilita metadados ID3 de apresentação, preservando a leitura
-de delay/padding gapless e os títulos/artistas/créditos fornecidos pela programação.
+de delay/padding gapless e os créditos da fonte das notícias.
 
 A janela de repetição é `ProgrammingConfiguration.MUSIC_REPEAT_INTERVAL_MS` (**6 h**).
 O histórico privado por tenant registra músicas realmente iniciadas e sobrevive ao

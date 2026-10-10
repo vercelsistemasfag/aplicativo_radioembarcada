@@ -56,7 +56,7 @@ class ProgramPlayerProgrammingTest {
             pieces.zip(config.stationIds).forEach { (item, program) ->
                 assertEquals(program.audioUrl, item.localConfiguration?.uri.toString())
                 assertEquals(audioCacheKey(program), item.localConfiguration?.customCacheKey)
-                assertEquals(program.title, item.mediaMetadata.title)
+                assertEquals("Rádio Alce - AO VIVO", item.mediaMetadata.title)
                 assertEquals(TransitionConfiguration.STATION_ID_GAIN, TransitionPolicy.gain(program.type), 0f)
                 assertEquals(45_000L, PreloadPlan.durationMs(1, program.type, false))
             }
@@ -83,7 +83,7 @@ class ProgramPlayerProgrammingTest {
             assertEquals(14, ids.size)
             assertEquals(ids.size, ids.map { it.mediaId }.distinct().size)
             assertEquals(1, ids.map { it.localConfiguration?.customCacheKey }.distinct().size)
-            assertTrue(ids.all { it.mediaMetadata.title == "Rádio Alce" &&
+            assertTrue(ids.all { it.mediaMetadata.title == "Rádio Alce - AO VIVO" &&
                 it.mediaMetadata.mediaType == MediaMetadata.MEDIA_TYPE_MIXED &&
                 it.localConfiguration?.uri.toString() == "https://example.org/station.mp3" })
             val next = programming.nextBatch(batch.last(), batch.map { it.id }.toSet())

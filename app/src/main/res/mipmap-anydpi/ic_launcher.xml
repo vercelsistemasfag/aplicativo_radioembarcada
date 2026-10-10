@@ -2,5 +2,5 @@
     <background android:drawable="@android:color/black" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
     <!-- Android 13+ themed icon; older Android versions ignore this optional layer. -->
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>

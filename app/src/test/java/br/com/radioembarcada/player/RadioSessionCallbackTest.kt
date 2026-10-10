@@ -200,6 +200,32 @@ class RadioSessionCallbackTest {
         assertEquals("Title music-2", controller.mediaMetadata.title)
     }
 
+    @Test fun notificationControllerReceivesStationBrandingAcrossAutomaticItems() {
+        val engine = ProgramPlayer(RuntimeEnvironment.getApplication())
+        try {
+            val programs = listOf(item("music"), item("station", ProgramItemType.STATION_ID),
+                item("next-music"), item("jingle", ProgramItemType.JINGLE))
+            val media = engine.register(programs)
+            val sources = media.map { value -> FakeMediaSource(FakeTimeline(
+                FakeTimeline.TimelineWindowDefinition(1, value.mediaId, true, false, false, false,
+                    1_000_000, 0, 0, listOf(AdPlaybackState.NONE), value))) }
+            player.setMediaSources(sources); player.prepare()
+            advance(player).untilState(Player.STATE_READY)
+            val controller = connect(notification = true)
+            val identity = RadioMediaIdentity(RuntimeEnvironment.getApplication())
+            programs.forEachIndexed { index, program ->
+                if (index > 0) {
+                    player.seekToNextMediaItem()
+                    runMainLooperUntil { controller.currentMediaItem?.mediaId == program.id }
+                }
+                assertEquals("Rádio Alce - AO VIVO", controller.mediaMetadata.title)
+                assertEquals(identity.artworkUri, controller.mediaMetadata.artworkUri)
+                assertNull(controller.mediaMetadata.artist)
+                assertRadioCommands(controller)
+            }
+        } finally { engine.release() }
+    }
+
     @Test fun transitionControllerPreservesFullPiecesAndImmediateNaturalAdvance() {
         val items = listOf(item("m1").copy(durationMs = 30_000),
             item("s1", ProgramItemType.STATION_ID).copy(durationMs = 8_000),

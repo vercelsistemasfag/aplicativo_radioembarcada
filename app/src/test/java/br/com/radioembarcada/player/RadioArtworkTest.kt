@@ -32,7 +32,7 @@ class RadioArtworkTest {
         assertEquals(512, radio.encoderDelay)
         assertEquals(1024, radio.encoderPadding)
     }
-    @Test fun catalogueArtworkIsNotForwardedButTitlesAndNewsCreditsRemain() {
+    @Test fun stationArtworkAndTitleReplaceTrackMetadataButInternalDataAndNewsCreditsRemain() {
         val engine = ProgramPlayer(RuntimeEnvironment.getApplication())
         try {
             val music = ProgramItem("m", ProgramItemType.MUSIC, "Title", "https://example.org/m.mp3", 12_000,
@@ -41,11 +41,28 @@ class RadioArtworkTest {
                 artist = "Radioagência Nacional", source = "Radioagência Nacional")
             val intro = music.copy(id = "intro", type = ProgramItemType.NEWS_INTRO)
             val media = engine.register(listOf(music, intro, news))
-            media.forEach { assertNull(it.mediaMetadata.artworkData); assertNull(it.mediaMetadata.artworkUri) }
-            assertEquals("Title", media.first().mediaMetadata.title)
-            assertEquals("Artist", media.first().mediaMetadata.artist)
+            val identity = RadioMediaIdentity(RuntimeEnvironment.getApplication())
+            media.forEach {
+                assertNull(it.mediaMetadata.artworkData)
+                assertEquals(identity.artworkUri, it.mediaMetadata.artworkUri)
+                assertEquals("Rádio Alce - AO VIVO", it.mediaMetadata.title)
+                assertEquals("Rádio Alce - AO VIVO", it.mediaMetadata.displayTitle)
+            }
+            assertEquals("Title", engine.items.first().title)
+            assertNull(media.first().mediaMetadata.artist)
+            assertEquals("Artist", engine.items.first().artist)
             assertEquals("Radioagência Nacional", media.last().mediaMetadata.artist)
         } finally { engine.release() }
+    }
+    @Test fun stationArtworkIsReadableByMedia3WithoutInternet() {
+        val context = RuntimeEnvironment.getApplication()
+        val source = androidx.media3.datasource.DefaultDataSource.Factory(context).createDataSource()
+        try {
+            assertTrue(source.open(androidx.media3.datasource.DataSpec(RadioMediaIdentity(context).artworkUri)) > 0)
+            val header = ByteArray(2)
+            assertEquals(2, source.read(header, 0, 2))
+            assertArrayEquals(byteArrayOf(0xff.toByte(), 0xd8.toByte()), header)
+        } finally { source.close() }
     }
     private fun extract(extractor: Mp3Extractor): Format {
         val input = FakeExtractorInput.Builder().setData(mp3()).build()

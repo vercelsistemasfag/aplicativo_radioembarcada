@@ -1,5 +1,5 @@
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:insetLeft="25%" android:insetRight="25%"
-    android:insetTop="27.604%" android:insetBottom="27.604%">
-    <bitmap android:src="@drawable/alce_logo" android:gravity="fill" android:filter="true" />
+    android:insetTop="27.148%" android:insetBottom="27.148%">
+    <bitmap android:src="@drawable/radio_alce_brand" android:gravity="fill" android:filter="true" />
 </inset>

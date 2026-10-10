@@ -1,0 +1,6 @@
+<!-- Transparent brand silhouette preserves themed-icon masking; the full-color icon uses the new image. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="25%" android:insetRight="25%"
+    android:insetTop="27.604%" android:insetBottom="27.604%">
+    <bitmap android:src="@drawable/alce_logo" android:gravity="fill" android:filter="true" />
+</inset>

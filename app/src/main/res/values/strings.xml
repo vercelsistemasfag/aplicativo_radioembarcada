@@ -1,1 +1,4 @@
-<resources><string name="app_name">Rádio Alce</string></resources>
+<resources>
+    <string name="app_name">Rádio Alce</string>
+    <string name="radio_live_title">%1$s - AO VIVO</string>
+</resources>

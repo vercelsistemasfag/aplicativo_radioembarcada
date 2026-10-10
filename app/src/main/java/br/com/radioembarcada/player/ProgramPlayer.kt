@@ -26,8 +26,10 @@ import br.com.radioembarcada.network.news.OfficialNewsDataSource
 /** Toca conteúdo genérico. Não consulta catálogo nem decide a ordem musical. */
 @UnstableApi
 class ProgramPlayer(context: Context, private val localSource: Boolean = false,
+    stationName: String = context.getString(br.com.radioembarcada.R.string.app_name),
     private val diagnostic: (String) -> Unit = {}) {
     private data class Entry(val program: ProgramItem, val media: MediaItem)
+    private val identity = RadioMediaIdentity(context, stationName)
     private val entries = mutableListOf<Entry>()
     private val database = StandaloneDatabaseProvider(context)
     private val prefix = InsertSilenceProcessor(diagnostic)
@@ -57,7 +59,7 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
         val dataSource = CacheDataSource.Factory().setCache(cache)
             .setUpstreamDataSourceFactory(http)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        // Disable embedded ID3 artwork; catalogue metadata remains authoritative.
+        // Disable embedded ID3 artwork/titles; the session presents the station identity.
         // Media3 still reads Xing/LAME and required gapless/seek ID3 frames internally.
         val extractors = radioExtractors()
         val upstream = ProgressiveMediaSource.Factory(dataSource, extractors)
@@ -173,7 +175,8 @@ class ProgramPlayer(context: Context, private val localSource: Boolean = false,
 
     private fun mediaItem(item: ProgramItem): MediaItem = MediaItem.Builder()
         .setMediaId(item.id).setUri(item.audioUrl).setCustomCacheKey(audioCacheKey(item))
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
+        .setMediaMetadata(identity.applyTo(MediaMetadata.Builder())
+            .setArtist(if (item.type == ProgramItemType.NEWS_DROP) item.source.ifBlank { item.artist } else null)
             .setDurationMs(item.durationMs.takeIf { it > 0 })
             .setIsBrowsable(false).setIsPlayable(true)
             .setMediaType(if (item.type == ProgramItemType.MUSIC) MediaMetadata.MEDIA_TYPE_MUSIC
