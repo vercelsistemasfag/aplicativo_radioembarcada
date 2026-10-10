@@ -13,22 +13,31 @@ env:
   R2_MUSIC_PREFIX: music/
 
 jobs:
-  credentials:
-    name: 1 - Validar secrets
+  access_key:
+    name: 1A - Validar Access Key ID
     runs-on: ubuntu-latest
     steps:
-      - name: Validar presença dos secrets
+      - name: Confirmar R2_ACCESS_KEY_ID
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          VALUE: ${{ secrets.R2_ACCESS_KEY_ID }}
         run: |
-          test -n "$AWS_ACCESS_KEY_ID" || { echo "::error::Secret R2_ACCESS_KEY_ID ausente ou vazio"; exit 11; }
-          test -n "$AWS_SECRET_ACCESS_KEY" || { echo "::error::Secret R2_SECRET_ACCESS_KEY ausente ou vazio"; exit 12; }
-          echo "Secrets presentes."
+          test -n "$VALUE" || { echo "::error::R2_ACCESS_KEY_ID está ausente ou vazio"; exit 11; }
+          echo "R2_ACCESS_KEY_ID disponível."
+
+  secret_key:
+    name: 1B - Validar Secret Access Key
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirmar R2_SECRET_ACCESS_KEY
+        env:
+          VALUE: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          test -n "$VALUE" || { echo "::error::R2_SECRET_ACCESS_KEY está ausente ou vazio"; exit 12; }
+          echo "R2_SECRET_ACCESS_KEY disponível."
 
   r2_access:
     name: 2 - Testar acesso ao R2
-    needs: credentials
+    needs: [access_key, secret_key]
     runs-on: ubuntu-latest
     steps:
       - name: Garantir AWS CLI
