@@ -59,7 +59,7 @@ class NewsProgrammingTest {
         restored.prefetch()
         assertEquals(setOf("drop"), seen.last())
         assertNull(restored.reserve(10_000)) // reinício não dispara notícia imediatamente
-        restored.tick(0, true); restored.tick(1_800_000, true)
+        restored.tick(0, true); restored.tick(NewsConfiguration.NEWS_INTERVAL_MS, true)
         assertEquals("news:second", restored.reserve(10_000)?.get(1)?.contentId)
     }
     @Test fun pauseRetainsReservationAndActiveClockAcrossPersistence() = runBlocking {

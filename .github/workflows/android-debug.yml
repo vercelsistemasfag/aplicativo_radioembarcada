@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       news_interval_debug_minutes:
-        description: 'Notícias DEBUG: 0 = 30 minutos; teste opcional 3 ou 5 minutos'
+        description: 'Notícias DEBUG: 0 = 60 minutos; teste opcional 3 ou 5 minutos'
         type: choice
         default: '0'
         options: ['0', '3', '5']
